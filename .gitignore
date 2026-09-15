@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.dev.vars
+.wrangler/
+*.log
+.DS_Store
+
+# 真实配置含 Cloudflare 资源 ID，仅留本地；模板见 wrangler.toml.example
+wrangler.toml

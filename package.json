@@ -1,0 +1,24 @@
+{
+  "name": "freeai-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "聚合免费 AI API 的免费计划代理网关（Cloudflare Workers）",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "typecheck": "tsc --noEmit",
+    "publish": "bash scripts/publish.sh"
+  },
+  "dependencies": {
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260911.0",
+    "typescript": "^5.7.0",
+    "wrangler": "^4.0.0"
+  }
+}
