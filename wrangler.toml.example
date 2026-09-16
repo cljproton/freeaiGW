@@ -33,7 +33,7 @@ NEW_USER_CALLS_QUOTA = "50"
 NEW_USER_TOKENS_QUOTA = "150000"
 SESSION_TTL = "604800"
 # 反滥用
-MAX_REGISTER_PER_IP_PER_DAY = "3"
+MAX_REGISTER_PER_IP_PER_DAY = "20"
 # 熔断与调度
 CIRCUIT_SUCCESS_RATE_THRESHOLD = "0.5"
 CIRCUIT_MIN_REQUESTS = "10"
@@ -63,6 +63,12 @@ CONTRIBUTION_ACTIVE_DAYS = "7"
 # 预算保护（见 docs/PLAN.md 附录 I）
 BUDGET_PAUSE_THRESHOLD = "0.9"
 BUDGET_SAMPLE_RATE = "1/200"
+# Google AdSense（可选，0=关闭；ADSENSE_CLIENT 为空即不加载广告脚本）
+ADSENSE_ENABLED = "0"
+ADSENSE_CLIENT = ""
+ADSENSE_SLOT = ""
+# SEO：canonical/OG/sitemap 统一基址（可选，空则按请求 Host 推导）
+PUBLIC_BASE_URL = ""
 
 # 注意：密钥（如 ENCRYPTION_KEY、CRON_TOKEN、Channel 加密 Key）不入库，
 # 存于 .dev.vars（本地）与 wrangler secret（生产）中。

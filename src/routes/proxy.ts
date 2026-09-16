@@ -4,6 +4,7 @@ import type { AppEnv, Env } from "../types";
 import { requireBearerToken } from "../middleware/auth";
 import { quotaGuard } from "../middleware/quota";
 import { pickChannel } from "../scheduler/pickChannel";
+import { t, type Lang } from "../i18n";
 import {
   addTokens,
   circuitBreakChannel,
@@ -65,7 +66,8 @@ ROUTER.post(
     if (!model) return c.json({ error: "model_required", message: "缺少 model 字段" }, 400);
 
     const maxRetries = Math.max(0, Number(c.env.MAX_PROXY_RETRIES) || 2);
-    let lastErr = "资源池暂无可用渠道";
+    const lang: Lang = c.get("lang");
+    let lastErr = t(lang, "errors", "pool_none");
     let lastStatus = 503;
 
     const tokensLimit = (await getUserEffectiveLimits(c.env, user)).tokens;
@@ -73,12 +75,12 @@ ROUTER.post(
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const candidates = await listCandidateChannels(c.env, model);
       if (!candidates.length) {
-        lastErr = "资源池暂无可用渠道";
+        lastErr = t(lang, "errors", "pool_empty");
         break;
       }
       const ch = pickChannel(candidates, model);
       if (!ch) {
-        lastErr = "资源池暂无支持该模型的渠道";
+        lastErr = t(lang, "errors", "pool_empty");
         break;
       }
 

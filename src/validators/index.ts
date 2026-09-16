@@ -1,30 +1,46 @@
 /** 输入校验 + 恶意域名识别（见 4.3 / 附录 J） */
 
-export type ValidationResult = { ok: true } | { ok: false; message: string };
+/** kind：用于 i18n 选择词条的稳定标识；message 为中文兜底文案（可能被旧调用方直接使用） */
+export type ValidationFailKind =
+  | "username"
+  | "password_short"
+  | "password_long"
+  | "provider"
+  | "api_url"
+  | "api_url_https"
+  | "api_url_host"
+  | "models_empty"
+  | "models_too_many"
+  | "models_bad"
+  | "models_format";
+
+export type ValidationResult =
+  | { ok: true }
+  | { ok: false; message: string; kind?: ValidationFailKind };
 
 export function ok(): ValidationResult {
   return { ok: true };
 }
 
-export function fail(message: string): ValidationResult {
-  return { ok: false, message };
+export function fail(message: string, kind?: ValidationFailKind): ValidationResult {
+  return kind ? { ok: false, message, kind } : { ok: false, message };
 }
 
 export function validateUsername(username: string): ValidationResult {
   if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
-    return fail("用户名需为 3-20 位字母、数字或下划线");
+    return fail("用户名需为 3-20 位字母、数字或下划线", "username");
   }
   return ok();
 }
 
 export function validatePassword(pw: string): ValidationResult {
-  if (pw.length < 8) return fail("密码至少 8 位");
-  if (pw.length > 128) return fail("密码过长");
+  if (pw.length < 8) return fail("密码至少 8 位", "password_short");
+  if (pw.length > 128) return fail("密码过长", "password_long");
   return ok();
 }
 
 export function validateProvider(name: string): ValidationResult {
-  if (!/^[a-zA-Z0-9 _\-\.]{1,40}$/.test(name)) return fail("厂商名称格式不正确");
+  if (!/^[a-zA-Z0-9 _\-\.]{1,40}$/.test(name)) return fail("厂商名称格式不正确", "provider");
   return ok();
 }
 
@@ -34,10 +50,10 @@ export function validateApiUrl(url: string): ValidationResult {
   try {
     u = new URL(url);
   } catch {
-    return fail("API 地址不是合法 URL");
+    return fail("API 地址不是合法 URL", "api_url");
   }
-  if (u.protocol !== "https:") return fail("仅支持 HTTPS 地址");
-  if (!u.hostname) return fail("缺少域名");
+  if (u.protocol !== "https:") return fail("仅支持 HTTPS 地址", "api_url_https");
+  if (!u.hostname) return fail("缺少域名", "api_url_host");
   return ok();
 }
 
@@ -78,16 +94,16 @@ export function isMaliciousDomain(hostname: string): boolean {
 export function validateModelsList(modelsJson: string): ValidationResult {
   try {
     const arr = JSON.parse(modelsJson) as unknown;
-    if (!Array.isArray(arr) || arr.length === 0) return fail("请至少选择一个模型");
-    if (arr.length > 50) return fail("最多选择 50 个模型");
+    if (!Array.isArray(arr) || arr.length === 0) return fail("请至少选择一个模型", "models_empty");
+    if (arr.length > 50) return fail("最多选择 50 个模型", "models_too_many");
     for (const m of arr) {
       if (typeof m !== "string" || !/^[a-zA-Z0-9 _\-\.:]{1,80}$/.test(m)) {
-        return fail("模型名称格式不正确");
+        return fail("模型名称格式不正确", "models_bad");
       }
     }
     return ok();
   } catch {
-    return fail("模型列表格式错误");
+    return fail("模型列表格式错误", "models_format");
   }
 }
 

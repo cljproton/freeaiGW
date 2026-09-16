@@ -1,5 +1,10 @@
 import type { DBUser } from "../db/schema";
+import type { Env } from "../types";
+import type { Lang } from "../i18n";
+import { t } from "../i18n";
 import { html } from "hono/html";
+import { AdSenseHead } from "./ads";
+import { OG_LOCALE, siteJsonLd, type Seo } from "../utils/seo";
 
 const ASSETS = html`
 <script src="https://unpkg.com/htmx.org@1.9.12"></script>
@@ -348,54 +353,126 @@ a{color:inherit;text-decoration:none}
 </style>
 `;
 
+/** 客户端一次性文案（JS 触发动作，如按钮态），页面加载时按 lang 替换 */
+function ClientI18nMap(lang: Lang): Record<string, string> {
+  const cp = t(lang, "dashboard", "codeblob_copied");
+  return { __copied: cp };
+}
+
+export const I18N_MAP_ATTR = "data-i18n";
+
 export function Layout(props: {
   title: string;
   user?: DBUser | null;
   children: any;
   active?: string;
+  lang: Lang;
+  env: Env;
+  adsInFoot?: boolean;
+  /** canonical/OG 基址（PUBLIC_BASE_URL 或请求 Host 推导），空则跳过 SEO 标签 */
+  base?: string;
+  /** 页面级 SEO 信息 */
+  seo?: Seo;
 }) {
-  const { title, user, children, active } = props;
+  const { title, user, children, active, lang, env, adsInFoot, base, seo } = props;
+  const L = (k: any) => t(lang, "layout", k);
+  const client = ClientI18nMap(lang);
+  const pagePath = seo?.path === "/" ? "" : seo?.path ?? "";
+  const canonical = base && seo ? `${base}/${lang}${pagePath}` : null;
+  const robots = seo?.noindex ? "noindex, nofollow" : "index, follow";
+  const jsonLd = base ? [siteJsonLd(base, lang), ...(seo?.jsonLd ?? [])] : [];
+  // 公开页同页切换语言；后台/登录页走 /lang?to=（写 cookie + 回跳当前页）
+  const switchHref = seo?.noindex
+    ? `/lang?to=${lang === "zh" ? "en" : "zh"}`
+    : `/${lang === "zh" ? "en" : "zh"}${pagePath}`;
   return (
-    <html lang="zh">
+    <html lang={lang}>
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>{title}</title>
+        {seo?.description ? <meta name="description" content={seo.description} /> : null}
+        <meta name="robots" content={robots} />
+        {canonical ? <link rel="canonical" href={canonical} /> : null}
+        {base && seo ? (
+          <>
+            {(["en", "zh"] as Lang[]).map((l) => (
+              <link key={l} rel="alternate" hreflang={l} href={`${base}/${l}${pagePath}`} />
+            ))}
+          </>
+        ) : null}
+        <meta property="og:site_name" content="FreeAI Gateway" />
+        <meta property="og:type" content={seo?.ogType ?? "website"} />
+        <meta property="og:title" content={title} />
+        {seo?.description ? <meta property="og:description" content={seo.description} /> : null}
+        {canonical ? <meta property="og:url" content={canonical} /> : null}
+        <meta property="og:locale" content={OG_LOCALE[lang]} />
+        <meta property="og:locale:alternate" content={OG_LOCALE[lang === "en" ? "zh" : "en"]} />
+        <meta name="twitter:card" content="summary" />
+        {jsonLd.length ? (
+          <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+        ) : null}
+        <AdSenseHead env={env} />
         {ASSETS}
       </head>
       <body>
         <nav class="topnav">
           <div class="wrap topnav-inner">
-            <a href="/" class="brand">
+            <a href={`/${lang}`} class="brand">
               <span class="brand-mark">◆</span>freeai<em>GW</em>
             </a>
             <div class="nav-links">
-              <a href="/docs" class={active === "docs" ? "active" : ""}>使用帮助</a>
-              <a href="/terms" class={active === "terms" ? "active" : ""}>协议</a>
+              <a href={`/${lang}/docs`} class={active === "docs" ? "active" : ""}>{L("nav_help")}</a>
+              <a href={`/${lang}/terms`} class={active === "terms" ? "active" : ""}>{L("nav_terms")}</a>
               {user ? (
                 <>
-                  <a href="/dashboard" class={active === "dashboard" ? "active" : ""}>使用面板</a>
-                  <a href="/submit" class={active === "submit" ? "active" : ""}>提交渠道</a>
+                  <a href="/dashboard" class={active === "dashboard" ? "active" : ""}>{L("nav_dashboard")}</a>
+                  <a href="/submit" class={active === "submit" ? "active" : ""}>{L("nav_submit")}</a>
                   <form method="post" action="/auth/logout" class="inline" style="">
-                    <button class="btn btn-ghost btn-sm">登出</button>
+                    <button class="btn btn-ghost btn-sm">{L("nav_logout")}</button>
                   </form>
                 </>
               ) : (
-                <a href="/auth" class="btn-login">登录 / 注册</a>
+                <a href="/auth" class="btn-login">{L("nav_login")}</a>
               )}
+              <a href={switchHref} class="btn btn-ghost btn-sm" title="Switch language">
+                {L("switch_to")}
+              </a>
             </div>
           </div>
         </nav>
         <main class="wrap">{children}</main>
         <footer class="footer">
           <div class="foot-logo">FREEAIGW</div>
-          <div>自由聚合社区渠道，仅供学习测试。使用即代表同意
-            <a href="/terms">用户协议</a> 与 <a href="/docs">使用规范</a>
+          <div>
+            {L("footer_text")
+              .split("{terms}")
+              .join("")
+              .split("{docs}")
+              .join("")}
+            <a href={`/${lang}/terms`}>{L("footer_terms")}</a> · <a href={`/${lang}/docs`}>{L("footer_docs")}</a>
           </div>
+          {adsInFoot ? <AdSenseFootnote lang={lang} /> : null}
         </footer>
+        <script dangerouslySetInnerHTML={{ __html: `(function(){
+var m = ${JSON.stringify(client)};
+document.querySelectorAll('[${I18N_MAP_ATTR}]').forEach(function(el){
+  var k = el.getAttribute('${I18N_MAP_ATTR}');
+  if (m[k]) el.textContent = m[k];
+});
+})();` }} />
       </body>
     </html>
   );
+}
+
+function AdSenseFootnote(props: { lang: Lang }) {
+  const { lang } = props;
+  const text =
+    lang === "zh"
+      ? "本站展示广告以支持运营；广告由 Google AdSense 提供。"
+      : "Ads shown support operations. Ads are served by Google AdSense.";
+  return <div style="margin-top:10px;font-size:11px;opacity:.6">{text}</div>;
 }
 
 export function Flash(props: { msg: string; ok?: boolean }) {

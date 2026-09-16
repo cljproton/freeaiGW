@@ -2,6 +2,7 @@ import type { Context, Next } from "hono";
 import { getUserEffectiveLimits, getQuotaLimit, todayStr } from "../config";
 import { getQuota, spendCall } from "../db";
 import { penalize, type PenaltyKind } from "../utils/audit";
+import { t } from "../i18n";
 
 /**
  * 用户配额检查（见 4.4 / A.3 / E.3）
@@ -27,7 +28,7 @@ export async function quotaGuard(c: Context, next: Next) {
     c.status(429);
     return c.json({
       error: "quota_exceeded",
-      message: "今日调用额度已用完，请明日再试",
+      message: t(c.get("lang") as "en" | "zh", "errors", "quota_exceeded"),
     });
   }
   await next();

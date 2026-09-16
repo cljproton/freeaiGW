@@ -11,13 +11,21 @@
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
     "build": "wrangler deploy --dry-run --outdir dist",
     "typecheck": "tsc --noEmit",
+    "dev:node": "tsx src/node/entry.ts",
+    "build:node": "esbuild src/node/entry.ts --bundle --platform=node --format=cjs --external:better-sqlite3 --external:node-cron --packages=external --outfile=dist-node/index.cjs",
+    "start:node": "node dist-node/index.cjs",
     "publish": "bash scripts/publish.sh"
   },
   "dependencies": {
-    "hono": "^4.6.0"
+    "better-sqlite3": "^13.0.3",
+    "hono": "^4.6.0",
+    "node-cron": "^4.6.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260911.0",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.23.13",
     "typescript": "^5.7.0",
     "wrangler": "^4.0.0"
   }

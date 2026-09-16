@@ -773,7 +773,7 @@ async function checkIpRegisterLimit(ip: string, env: Env): Promise<boolean> {
   const { results } = await env.DB.prepare(`
     SELECT COUNT(*) as cnt FROM ip_register_log WHERE ip = ? AND created_at > ?
   `).bind(ip, dayAgo).first();
-  return (results.cnt ?? 0) < 3; // 24h 内最多 3 个账号
+  return (results.cnt ?? 0) < 20; // 24h 内最多 20 个账号（阈值经 K.4 由 3 上调）
 }
 
 async function logIpRegister(ip: string, env: Env) {
@@ -807,7 +807,7 @@ async function checkQuota(userId: number, env: Env) {
 
 ```toml
 [vars]
-MAX_REGISTER_PER_IP_PER_DAY = "3"
+MAX_REGISTER_PER_IP_PER_DAY = "20"
 NEW_USER_DAYS = "7"
 NEW_USER_CALLS_QUOTA = "50"
 NEW_USER_TOKENS_QUOTA = "150000"
@@ -970,7 +970,7 @@ NEW_USER_CALLS_QUOTA = "50"
 NEW_USER_TOKENS_QUOTA = "150000"
 
 # 反滥用
-MAX_REGISTER_PER_IP_PER_DAY = "3"
+MAX_REGISTER_PER_IP_PER_DAY = "20"
 
 # 熔断与调度
 CIRCUIT_SUCCESS_RATE_THRESHOLD = "0.5"
@@ -1340,6 +1340,150 @@ BUDGET_SAMPLE_RATE = "1/200"
 
 > ⚠️ "检测到少量异常请求，额度已临时调整。恢复正常使用几天后将自动恢复。"
 > ℹ️ "你的信誉分正在回升，额度随正常使用自动恢复。"
+
+---
+
+## 附录 K：i18n 国际化 / AdSense / VPS Node 运行时（已落地）
+
+> 本章记录在 Cloudflare Workers 之外新增的实现：全站双语、AdSense 挂载、以及不依赖
+> Cloudflare 的自托管 Node 运行时。业务逻辑与 Workers 完全共用同一套 `src/`。
+
+### K.1 国际化（i18n）
+
+- **机制**：`src/i18n.ts` 内置 `en`/`zh` 两套词典（结构化 section.key），`t(lang, section, key, vars?)`
+  取值并替换 `{token}` 等占位符。`Lang = "en" | "zh"`，默认英文（开源/全球通用，杜绝硬编码中文）。
+- **切换**：`GET /lang?to=zh` 写 `ln` cookie；中间件读 cookie / `Accept-Language` 前缀，挂 `c.get("lang")`；
+  htmx 局部刷新请求由前端 JS 带上 `Cookie` 自动维持语言。
+- **覆盖范围**：全部页面（首页/登录注册/仪表盘/提交/文档）、各处 flash、配额/限流提示、
+  代理 `pool_empty`/`pool_none`/`quota_exceeded` 等关键错误（**错误 `error` code 保持英文常量**，
+  仅 message 双语）。API 侧的未授权/无效 token 等 message 刻意保持英文默认，不随 cookie 变化。
+- **保留英文原样**：`惩罚:` 模型名前缀（审计与 Cron 恢复依赖 `model LIKE '惩罚:%'`，见六章）。
+- **Token 一次性明文**：注册/重置后明文 Token 仅存登录会话 flash（KV/文件，TTL 120s、读后即删），
+  仪表盘欢迎页用 `token_flash_prefix` 双语展示后再不出现；库中始终只存 SHA-256 哈希 + 7 位前缀。
+
+### K.2 AdSense（Worker 模式）
+
+- env 变 `ADSENSE_CLIENT` / `ADSENSE_SLOT`（见附录 D；toml `[vars]` 提供，非 secret）。
+- 两值均非空时，首页与仪表盘页尾注入 AdSense 异步脚本与本单元 `<ins>`；起空白值的广告位不渲染，
+  未满足条件时不加载脚本（避免不必要的第三方依赖）。VPS 模式同样可通过 env 注入（默认为空）。
+
+### K.3 VPS Node 运行时（自托管）
+
+**目标与边界**：不引入 workerd/wrangler 运行时到容器；用纯 Node（Node ≥ 20）跑同一套 Hono 应用。
+不使用 Node 专用加密 API，密码/Token/上游 Key 加密一律走 WebCrypto（`src/utils/crypto.ts`）。
+
+- **存储抽象**：`src/platform/types.ts` 定义 `PlatformDb`/`PlatformKv`/`PlatformStorage`/`PlatformEnv`；
+  `src/platform/node.ts` 提供文件 KV（每 key 一个 JSON，文件名 = sha256(key)，`v`/`exp` 字段，
+  过期惰性删除；`get(key,"json")` 与 Workers KV 对齐：`v` 为字符串时 `JSON.parse` 后返回，保证
+  `gate:status` 等对象在两种运行时读取语义一致）+ better-sqlite3（WAL、busy_timeout、启动自动应用 `migrations/*.sql` 并记 `_migrations`）。
+  `PlatformDb.batch` 在 better-sqlite3 中实现为**同步事务**（其事务函数禁止返回 Promise），
+  语句链经 `makeExecutor` 定参 + `asyncStatement` 包装 + `WeakMap` 把 DbStatement 映射回同步执行器。
+- **入口**：`src/node/entry.ts` 用 `node:http` 手写 body 透传（含 `Content-Length`/`x-forwarded-for`，
+  流式 body 需 `duplex: "half"`），别名 `SESSIONS/GATE/DB` 到本地存储；启动即 `runDailyTasks()` 一次，
+  `node-cron` 按 `CRON_SCHEDULE` 每日执行；`.env` 由 `buildEnvFromProcess` 加载，生产用环境变量。
+- **迁移内嵌**：`src/platform/migrations.ts` 维护 `EMBEDDED_MIGRATIONS`（与 `migrations/*.sql` 同源），
+  esbuild 单文件 bundle 无法在运行时读磁盘目录，故迁移以**内嵌快照**为准（本地开发仍可传入磁盘目录覆盖）。
+  ⚠️ 新增迁移文件时必须同步把 SQL 追加进该常量。
+- **构建与运行**：源码为 ESM 且无扩展名导入，纯 Node 无法直接跑 → 用 esbuild 打包
+  `dist-node/index.cjs`（`--packages=external`，external：better-sqlite3 / node-cron）。脚本见 AGENTS.md：
+  `dev:node`（tsx）/ `build:node`（esbuild）/ `start:node`。
+- **回归验证**：每次源码改动跑 `npm run typecheck` + `npm run build:node` + 重新 `node dist-node/index.cjs`
+  冒烟（注册→欢迎页见明文 Token→二次访问 flash 已消费→空池 `502 upstream_failed`）。
+  Worker 侧 `npm run build`（wrangler dry-run）不受 Node 文件影响（main 仍是 `src/index.ts`）。
+  自动注册脚本注意：`MIN_ELAPSED_MS = 2500ms` 时序门（附录 A.3），GET 页面后须 sleep ≥3s 再提交。
+
+### K.4 反滥用参数更新
+
+- `MAX_REGISTER_PER_IP_PER_DAY` 阈值 **3 → 20**（wrangler.toml/example、`src/platform/node.ts` 默认值、
+  `src/routes/auth.tsx` fallback 同步）。附录 A.2 的同 IP 每日上限描述以其为准。
+
+### K.5 容器化（Docker / Docker Compose）
+
+- `Dockerfile`：两阶段构建——build 阶段装 python3/make/g++ 编译 better-sqlite3 → 出 `dist-node/` 后
+  prune dev 依赖；运行阶段 Node 22 slim、非 root（entrypoint 修复 bind-mount 权限后 `setpriv` 降权到
+  node:node，主进程 UID 1000）、`/app/data` 为数据卷。
+- `docker-entrypoint.sh`：容器以 root 启动，`chown -R node:node /app/data`（bind mount 默认 root 归属，
+  非 root 进程写不了），随后 `setpriv --reuid=1000 --regid=1000` 降权执行主进程。
+- `docker-compose.yml`：单服务，`8791:8791`，env_file `.env`，`./data:/app/data` 持久化，restart 策略。
+- `.env.example`：`ENCRYPTION_KEY`（32 位 hex，必填）/ `CRON_TOKEN` / `PORT=8791` / `HOST=0.0.0.0` /
+  `DATA_DIR=./data` / `CRON_SCHEDULE`（cron 表达式）/ `ADSENSE_CLIENT`、`ADSENSE_SLOT`。
+- 首次启动自动建表（依赖内嵌迁移，见 K.3）；IMAGE 发布流水线见附录 L.7。
+
+---
+
+## 附录 L：SEO / GEO（搜索引擎与 AI 爬虫，已落地）
+
+目标：公开页可被搜索引擎与 AI 爬虫（GPTBot/ClaudeBot/PerplexityBot/Google-Extended 等）正确发现、
+索引与引用；双语言可分别收录；后台/私有路由不被抓取。新增文件：`src/utils/seo.ts`、
+`src/middleware/seo.ts`、`src/routes/seo.ts`。全站仍为服务端渲染（无需预渲染）。
+
+### L.1 语言前缀 URL（替代纯 cookie 语言）
+
+- **规范形态**：`/en`、`/zh`（根）、`/en/docs`、`/zh/docs`、`/en/terms`、`/zh/terms`（无尾斜杠——与
+  Hono mount 合并后的路由形态一致）。根页面前缀路由通过 `app.route("/en", pages)` /
+  `app.route("/zh", pages)` 与无前缀挂载三重注册（`src/index.ts`）。
+- **`src/middleware/seo.ts` 规则**（挂在 i18n 中间件之后，语言优先级：前缀 > cookie > Accept-Language）：
+  - `/en`(`/zh`) 前缀 → `c.set("lang")` 并写 `ln` cookie（同页切换语言后，无前缀的后台页跟随最新语言）；
+  - `/en/`、`/en/docs/` 等尾斜杠形态 → 301 规范；
+  - 无前缀公开页（`/`、`/docs`、`/terms`）→ 按 cookie/Accept-Language 301 到对应前缀页，并写 `ln` cookie
+    （cookie 用户无感切换）；
+  - **带前缀的后台/API 路径**（`/en/dashboard`、`/en/auth` 等）→ 301 回无前缀版本，防 duplicate；
+  - 完全不参与：`/auth`、`/dashboard`、`/submit`、`/health`、`/api/*`、`/v1`、`/cron`、`/lang`、
+    `/robots.txt`、`/sitemap.xml`、`/llms.txt`、`/llms.md`（避免 htmx 片段、登录态、API 被改写）。
+- `/lang?to=` 路由保留作向后兼容（写 cookie + Referer 回跳）；Layout 语言切换按钮：公开页同页切换
+  （`/zh/docs ↔ /en/docs`），登录/后台页走 `/lang?to=`。
+
+### L.2 页面 Meta / canonical / hreflang / OG / JSON-LD
+
+- `Layout` 新增 `base`（canonical 基址）与 `seo` props；`<head>` 输出：description、`robots`
+  （auth/dashboard/submit `noindex,nofollow`，公开页 `index,follow`）、canonical、双语
+  `hreflang alternate`、Open Graph（site_name/type/title/description/url/locale+alternate）、
+  `twitter:card=summary`、JSON-LD。
+- JSON-LD：全站 `WebSite`；docs 页附 `SoftwareApplication`（DeveloperApplication、免费 Offer）。
+- 基址解析 `canonicalBase()`：`PUBLIC_BASE_URL`（见 L.5）优先，否则请求 Host（Worker/Node 通用）。
+
+### L.3 robots.txt
+
+`GET /robots.txt`（`src/routes/seo.ts`）：GPTBot/ClaudeBot/PerplexityBot/Google-Extended/`*` 全部
+Allow 公开页；Disallow：`/auth` `/dashboard` `/submit` `/api` `/v1` `/cron` `/lang`；尾部
+`Sitemap: <base>/sitemap.xml`。`Cache-Control: public, max-age=3600`。
+
+### L.4 sitemap.xml
+
+六条 URL（`/en` `/zh` `/en/docs` `/zh/docs` `/en/terms` `/zh/terms`），每条带
+`xhtml:link rel=alternate hreflang` 双语互指；`lastmod` 常量。XML 响应，缓存 1h。
+
+### L.5 GEO：llms.txt / llms.md（llmstxt.org 约定）
+
+- `GET /llms.txt`：站点摘要 + Key facts（统一 OpenAI 兼容 `base_url`、一次性 `sk-` Token 语义、
+  分级额度永不归零、failover/熔断、AES-256-GCM 存储、自愿共享免责）+ 文档链接。
+- `GET /llms.md`：人/模型可读完整参考 Markdown（Token 获取 → curl/Python/JS 示例 → 401/429/502/503
+  错误码 → 配额 → 贡献激励 → 协议要点），与页面文案同源。
+- 两个文件同样放行预算暂停（`budgetGuard` 静态集合已扩展）。
+
+### L.6 预算保护兼容
+
+`budgetGuard` 静态放行集合扩展为：原有静态页 + 语言前缀公开页正则（`/en` `/zh` 及 `/en/docs` 等）+
+`/robots.txt` `/sitemap.xml` `/llms.txt` `/llms.md`（暂停时爬虫文件仍可读）。
+
+### L.7 配置与 CI
+
+- `PUBLIC_BASE_URL`（可选）：canonical/OG/sitemap/llms统一公网基址；空则请求 Host 推导。
+  四处同步：`wrangler.toml(.example)` [vars]、`.env.example`、`src/types.ts:Env`、
+  `src/platform/node.ts` `DEFAULT_VALUES`；读取 helper：`config.publicBaseUrl()`。
+- GitHub Actions `.github/workflows/docker-publish.yml`：
+  - 触发：push 到 `main`、`v*` tag、手动 `workflow_dispatch`。
+  - Job1 `typecheck`（门禁：`npm ci && npm run typecheck`）→ Job2 `docker`。
+  - `docker`：QEMU + Buildx，GHCR 登录（`GITHUB_TOKEN`，`packages: write`），
+    `metadata-action` 产 tag（默认分支 `latest`、tag `semver`、`sha`），
+    `build-push-action` 多架构 `linux/amd64,linux/arm64` 推送 `ghcr.io/<owner>/<repo>`。
+
+### L.8 验证记录
+
+Node 冒烟全通过：公开页/前缀页 301 与 200、canonical/hreflang/OG/JSON-LD 正确渲染、`/auth` noindex、
+`/zh/dashboard` 301 回无前缀、robots/sitemap/llms 内容与 Content-Type/Cache-Control、cookie 语言判定、
+`PUBLIC_BASE_URL` 覆盖生效；注册→dashboard flash 全 Token→`/v1` 502 pool_empty 全链路无回归；
+`npm run typecheck`、Worker dry-run、sitemap XML 良构校验通过。
 
 ---
 

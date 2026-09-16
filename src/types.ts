@@ -1,7 +1,8 @@
 import type { Variables } from "./utils/crypto";
+import type { Lang } from "./i18n";
 
-/** Hono app 上下文类型：绑定（D1/KV/env）+ 每请求变量（user/auth） */
-export type AppEnv = { Bindings: Env; Variables: Variables };
+/** Hono app 上下文类型：绑定（D1/KV/env）+ 每请求变量（user/auth/lang） */
+export type AppEnv = { Bindings: Env; Variables: Variables & { lang: Lang } };
 
 export interface Env {
   // D1
@@ -50,4 +51,10 @@ export interface Env {
   // 预算保护
   BUDGET_PAUSE_THRESHOLD: string;
   BUDGET_SAMPLE_RATE: string;
+  // Google AdSense（可选，默认关闭；仅公开页渲染）
+  ADSENSE_ENABLED?: string;
+  ADSENSE_CLIENT?: string;
+  ADSENSE_SLOT?: string;
+  // SEO：canonical/OG/sitemap 统一基址（可选，空则按请求 Host 推导）
+  PUBLIC_BASE_URL?: string;
 }

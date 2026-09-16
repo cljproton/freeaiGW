@@ -1,14 +1,16 @@
 # FreeAI Gateway
 
-聚合免费 AI API 免费计划的高可用代理网关，部署于 Cloudflare Workers（Hono + D1 + KV）。
+聚合免费 AI API 免费计划的高可用代理网关，可部署于 **Cloudflare Workers**（Hono + D1 + KV）
+或 **自托管 VPS**（Node + better-sqlite3 + 文件 KV，Docker Compose 一键启动）。
 
 自动调度多条上游 Channel，提供统一 `sk-xxx` 网关 Token、配额分层、熔断重试、信誉分惩罚、
-贡献激励与预算保护，全部自动化、无人工干预。
+贡献激励与预算保护，全部自动化、无人工干预。全站中英双语（`?to=zh`/`?to=en` 切换）。
 
 ## 功能特性
 
 - **合一账号**：匿名制注册/登录（仅用户名 + 密码），一人一个网关 Token
 - **FreeAI 兼容**：`POST /v1/chat/completions`，Bearer Token 认证
+- **双语界面**：中英 i18n，`ln` cookie 持久化，复制/粘贴即切换
 - **上游调度**：模型匹配 + 权重轮询 + 失败重试 + 自动健康统计（成功率、熔断）
 - **配额分层**：按信誉分 / 新用户动态分级（正常 100 次/日 + 300k token）
 - **反滥用（自研，无第三方依赖）**：Proof-of-Work（难度 4）+ 蜜罐 + 提交时序 + KV 一次性防重放 + IP 注册限流
@@ -18,6 +20,7 @@
 - **预算保护**：采样统计、超阈值暂停上游调用（静态页保留）
 - **每日 Cron**：配额重置、日志清理、健康恢复、预算放闸
 - **加密存储**：上游 `api_key` 使用 `ENCRYPTION_KEY` 加密入库，Token 仅存 SHA-256 哈希
+- **双运行时**：同一套 `src/` 同时跑在 Cloudflare Workers 与纯 Node（D1→SQLite、KV→文件）
 
 ## 架构
 
@@ -47,9 +50,14 @@
 | `GET/POST /api/channels/*` | Channel 查看 / 提交 / 重校验 / 删除 / fetch-models |
 | `POST /v1/chat/completions` | **代理主接口**（Bearer `sk-xxx`） |
 | `GET /v1/models` | 可用模型列表 |
-| `POST /cron/<CRON_TOKEN>` | 每日调度任务（含 Cron Token 校验） |
+| `GET /lang` | 语言切换（`?to=zh` / `?to=en`，写 `ln` cookie） |
+| `POST /cron/run` | 每日调度任务（header `x-cron-token` 校验） |
+| `GET /en`、`GET /zh`、`GET /{en\|zh}/docs`、`GET /{en\|zh}/terms` | 语言前缀页面（canonical 形态，支持 hreflang；无前缀公开页自动 301 规范化） |
+| `GET /robots.txt` | 爬虫策略（允许公开页，禁抓后台/API；含 Sitemap 索引） |
+| `GET /sitemap.xml` | 双语站点地图（hreflang 互指） |
+| `GET /llms.txt`、`GET /llms.md` | GEO：面向 AI 大模型的站点摘要与完整参考 |
 
-## 快速开始
+## 快速开始（本地开发，Workers 模式）
 
 前置：Node.js ≥ 18、Cloudflare 账号（已开通 D1 与 KV）、wrangler 4.x。
 
@@ -71,7 +79,19 @@ npm run db:migrate:local
 npm run dev            # → http://127.0.0.1:8787
 ```
 
-## 部署
+## 快速开始（自托管 VPS，Node 模式）
+
+无需 Cloudflare 账户 / D1 / KV，纯 Node 运行同一套代码（better-sqlite3 + 文件 KV）：
+
+```bash
+npm install
+cp .env.example .env    # 编辑 ENCRYPTION_KEY / CRON_TOKEN / PORT / DATA_DIR 等
+npm start:node          # → http://127.0.0.1:8791（首次启动自动建表迁移）
+```
+
+本地手动触发每日 Cron：`POST /cron/run` + header `x-cron-token`。
+
+## 部署（Cloudflare Workers）
 
 ```bash
 npm run publish                 # 类型检查 → 跳过远程 D1 迁移 → 部署
@@ -85,6 +105,33 @@ npx wrangler secret put ENCRYPTION_KEY
 npx wrangler secret put CRON_TOKEN
 ```
 
+## 部署（自托管 VPS，Docker Compose）
+
+```bash
+cp .env.example .env            # 填入 ENCRYPTION_KEY（32 位 hex）与 CRON_TOKEN
+docker compose up -d            # 构建 + 启动，数据持久化于 ./data 卷
+docker compose logs -f          # 查看日志
+```
+
+单容器运行（无 Compose）：
+
+```bash
+docker build -t freeai-gateway .
+docker run -d --name freeai -p 8791:8791 \
+  -e ENCRYPTION_KEY=<32位hex> -e CRON_TOKEN=<随机串> \
+  -v ./data:/app/data freeai-gateway
+```
+
+## GitHub Actions：自动构建并发布镜像
+
+`.github/workflows/docker-publish.yml`：push 到 `main`（打 `v*` tag 亦可）触发 **typecheck 门禁 + 多架构
+（amd64/arm64）镜像构建**，推送 GHCR（`GITHUB_TOKEN`，无需额外 secret）：
+
+```bash
+docker pull ghcr.io/<owner>/<repo>:latest
+# 发版本：git tag v0.2.0 && git push --tags  → 同时产出 :v0.2.0
+```
+
 ## 配置项
 
 | 分组 | 变量 | 默认 | 说明 |
@@ -95,15 +142,16 @@ npx wrangler secret put CRON_TOKEN
 | 新用户 | `NEW_USER_CALLS_QUOTA` | `50` | 新用户每日调用上限 |
 | 新用户 | `NEW_USER_TOKENS_QUOTA` | `150000` | 新用户每日 token 上限 |
 | 会话 | `SESSION_TTL` | `604800` | 会话 KV TTL（秒） |
-| 反滥用 | `MAX_REGISTER_PER_IP_PER_DAY` | `3` | 同 IP 每日注册账号上限 |
+| 反滥用 | `MAX_REGISTER_PER_IP_PER_DAY` | `20` | 同 IP 每日注册账号上限 |
 | 熔断 | `CIRCUIT_*` | - | 成功率阈值 / 最少请求数 / 冷却时长 / 下架次数 |
 | 重试 | `MAX_PROXY_RETRIES` | `2` | 单次调用最多切换上游次数 |
 | 信誉分 | `REPUTATION_*` | - | 加分 / 各类扣分权重（见附录 J） |
 | 贡献 | `CONTRIBUTION_*` | - | CR 分档与加成（见附录 G） |
 | 预算 | `BUDGET_PAUSE_THRESHOLD` | `0.9` | 超出暂停阈值 |
 | 预算 | `BUDGET_SAMPLE_RATE` | `1/200` | 采样计数频率 |
+| SEO | `PUBLIC_BASE_URL` | `""` | canonical/OG/sitemap 统一基址（空则按请求 Host） |
 
-完整释义见 `docs/PLAN.md` 附录 D。
+完整释义见 `docs/PLAN.md` 附录 D；VPS/Node 专用配置见 `docs/PLAN.md` 附录 K（`PORT`、`DATA_DIR`、`CRON_SCHEDULE`，以及 Worker 模式的 `ADSENSE_SLOT` / `ADSENSE_CLIENT`）。
 
 ## 数据模型
 
@@ -125,7 +173,7 @@ npx wrangler secret put CRON_TOKEN
   2. **蜜罐**：隐藏 `website` 字段，被填充即拒绝
   3. **时序**：`got_ts` 距提交不足 2.5s 或超 10 分钟即拒绝
   4. **一次性防重放**：挑战存 KV（TTL 10 分钟），验证后立即删除，重放无效
-- **IP 限流**：注册同 IP 每日最多 3 个账号；登录失败过多临时锁定
+- **IP 限流**：注册同 IP 每日最多 20 个账号；登录失败过多临时锁定
 - **预算保护**：采样估算，超阈值全局暂停上游调用，保留静态页与登录
 
 ## 项目结构
@@ -136,19 +184,23 @@ src/
 ├── types.ts            # Env 类型（wrangler.toml vars）
 ├── config.ts
 ├── db/                 # D1 访问层 + 表结构类型
-├── utils/              # crypto（PBKDF2/密码/token）、pow、audit
-├── middleware/         # auth / budget / quota / rate-limit
-├── routes/             # pages / auth / tokens / channels / proxy / cron
-└── views/              # htmx + Tailwind 页面（含内联 PoW 脚本）
-migrations/             # D1 SQL 迁移
+├── platform/           # 存储抽象：Workers 实现 + Node 实现（better-sqlite3/文件 KV）
+├── node/entry.ts       # 纯 Node 入口（node:http + .env + node-cron）
+├── utils/              # crypto（PBKDF2/密码/token）、pow、audit、i18n、seo（canonical/JSON-LD）
+├── middleware/         # auth / budget / quota / rate-limit / seo（语言前缀 + 规范化）
+├── routes/             # pages / auth / tokens / channels / proxy / cron / seo（robots/sitemap/llms）
+└── views/              # htmx + Tailwind 页面（含内联 PoW 脚本，中英双语）
+migrations/             # D1 SQL 迁移（Node 模式自动应用）
 scripts/publish.sh      # 一键发布（可选 --migrate）
+dist-node/              # Node 模式 esbuild 产物
 docs/PLAN.md            # 完整设计文档（架构/调度/预算/激励/惩罚等）
 ```
 
 ## 文档
 
 - `docs/PLAN.md`：详细设计方案，含调度引擎（第五章）、配额分层（5.5）、Cron（第六章）、
-  反滥用（附录 A）、贡献激励（附录 G）、预算保护（附录 I）、惩罚机制（附录 J）
+  反滥用（附录 A）、贡献激励（附录 G）、预算保护（附录 I）、惩罚机制（附录 J）、
+  Node/VPS 运行时与 i18n（附录 K）、SEO/GEO 与镜像发布（附录 L）
 
 ## License
 

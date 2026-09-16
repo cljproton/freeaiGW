@@ -115,3 +115,23 @@ export function sampleRate(env: Env): number {
 export function pauseThreshold(env: Env): number {
   return num(env, "BUDGET_PAUSE_THRESHOLD") || 0.9;
 }
+
+/** AdSense 是否启用（ADSENSE_CLIENT 为空视为未启用） */
+export function adsenseEnabled(env: Env): boolean {
+  return (num(env, "ADSENSE_ENABLED") === 1 || env.ADSENSE_ENABLED === "1") && !!env.ADSENSE_CLIENT;
+}
+
+/** AdSense 客户端 ID（如 ca-pub-xxxx） */
+export function adsenseClient(env: Env): string {
+  return (env.ADSENSE_CLIENT ?? "").trim();
+}
+
+/** AdSense 广告位 ID（可选，空则用自动广告，不渲染显式单元） */
+export function adsenseSlot(env: Env): string {
+  return (env.ADSENSE_SLOT ?? "").trim();
+}
+
+/** SEO 统一基址（可选，空则运行时按请求 Host 推导） */
+export function publicBaseUrl(env: Env): string {
+  return (env.PUBLIC_BASE_URL ?? "").trim().replace(/\/+$/, "");
+}

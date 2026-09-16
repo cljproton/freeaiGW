@@ -1,6 +1,9 @@
 node_modules/
 dist/
+dist-node/
 .dev.vars
+.env
+data/
 .wrangler/
 *.log
 .DS_Store

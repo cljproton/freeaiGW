@@ -1,0 +1,12 @@
+services:
+  gateway:
+    build:
+      context: .
+    container_name: freeai-gateway
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8791:8791"
+    volumes:
+      - ./data:/app/data

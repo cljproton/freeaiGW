@@ -96,7 +96,7 @@ export async function requireBearerToken(c: Context, next: Next) {
   const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : auth;
   if (!token) {
     c.status(401);
-    return c.json({ error: "unauthorized", message: "缺少 Authorization: Bearer sk-xxx" });
+    return c.json({ error: "unauthorized", message: "missing Authorization: Bearer sk-xxx" });
   }
   const tokenHash = await sha256Hex(token);
   const dbToken = await getActiveTokenByHash(c.env, tokenHash);

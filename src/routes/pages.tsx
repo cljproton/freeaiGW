@@ -5,6 +5,8 @@ import { getAndClearFlash, getSessionSid, requirePageUser } from "../middleware/
 import { getActiveTokenByUser, getQuota, listChannelsByOwner } from "../db";
 import { getBudgetStatus } from "../middleware/budget";
 import { isNewUser, tierBonus, todayStr, getUserEffectiveLimits } from "../config";
+import { t } from "../i18n";
+import { canonicalBase, softwareJsonLd } from "../utils/seo";
 import { IndexPage, HealthPanel, type Health } from "../views/index";
 import { DashboardPage, type UsageInfo } from "../views/dashboard";
 import { SubmitPage } from "../views/submit";
@@ -53,12 +55,21 @@ async function loadDashboardData(env: Env, user: DBUser) {
 
 ROUTER.get("/", async (c) => {
   const health = await getHealth(c.env);
-  return c.html(<IndexPage health={health} />);
+  const lang = c.get("lang");
+  return c.html(
+    <IndexPage
+      health={health}
+      lang={lang}
+      env={c.env}
+      base={canonicalBase(c)}
+      seo={{ path: "/", description: t(lang, "seo", "home_desc"), ogType: "website" }}
+    />,
+  );
 });
 
 ROUTER.get("/health", async (c) => {
   const health = await getHealth(c.env);
-  return c.html(<HealthPanel health={health} />);
+  return c.html(<HealthPanel health={health} lang={c.get("lang")} />);
 });
 
 ROUTER.get("/dashboard", requirePageUser, async (c) => {
@@ -68,24 +79,61 @@ ROUTER.get("/dashboard", requirePageUser, async (c) => {
     getAndClearFlash(c.env, getSessionSid(c)),
     Promise.resolve(c.req.query("welcome") === "1"),
   ]);
+  const lang = c.get("lang");
+  const tokenMsg = flash && welcome ? t(lang, "dashboard", "token_flash_prefix", { token: flash }) : undefined;
   return c.html(
     <DashboardPage
       user={user}
       usage={data.usage}
       contributions={data.contributions}
       tokenPrefix={data.tokenPrefix}
-      tokenPlain={flash && welcome ? flash : undefined}
+      flash={tokenMsg}
+      lang={lang}
+      env={c.env}
+      base={canonicalBase(c)}
+      seo={{ path: "/dashboard", noindex: true }}
     />,
   );
 });
 
 ROUTER.get("/submit", requirePageUser, async (c) => {
   const user = c.get("user") as DBUser;
+  const lang = c.get("lang");
   const contributions = await listChannelsByOwner(c.env, user.id);
-  return c.html(<SubmitPage user={user} contributions={contributions} />);
+  return c.html(
+    <SubmitPage
+      user={user}
+      contributions={contributions}
+      lang={lang}
+      env={c.env}
+      base={canonicalBase(c)}
+      seo={{ path: "/submit", noindex: true }}
+    />,
+  );
 });
 
-ROUTER.get("/docs", (c) => c.html(<DocsPage />));
-ROUTER.get("/terms", (c) => c.html(<TermsPage />));
+ROUTER.get("/docs", (c) => {
+  const lang = c.get("lang");
+  const desc = t(lang, "seo", "docs_desc");
+  return c.html(
+    <DocsPage
+      lang={lang}
+      env={c.env}
+      base={canonicalBase(c)}
+      seo={{ path: "/docs", description: desc, jsonLd: [softwareJsonLd(canonicalBase(c), lang, desc)] }}
+    />,
+  );
+});
+ROUTER.get("/terms", (c) => {
+  const lang = c.get("lang");
+  return c.html(
+    <TermsPage
+      lang={lang}
+      env={c.env}
+      base={canonicalBase(c)}
+      seo={{ path: "/terms", description: t(lang, "seo", "terms_desc") }}
+    />,
+  );
+});
 
 export default ROUTER;

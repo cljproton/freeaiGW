@@ -40,13 +40,19 @@ async function maybeSample(env: any): Promise<void> {
   }
 }
 
-const STATIC_PAGES = new Set(["/", "/docs", "/terms", "/auth", "/auth/"]);
+const STATIC_PAGES = new Set(["/", "/docs", "/terms", "/auth", "/auth/", "/robots.txt", "/sitemap.xml", "/llms.txt", "/llms.md"]);
+// 语言前缀公开页：/en /en/ /zh/ /en/docs /zh/terms 等
+const LANG_PUBLIC_RE = /^\/(?:en|zh)(?:\/(?:docs|terms)?)?\/?$/;
 const STATIC_ASSETS = /\.(css|js|png|jpg|svg|ico|woff2?)$/;
+
+function isStaticPage(path: string): boolean {
+  return STATIC_PAGES.has(path) || LANG_PUBLIC_RE.test(path) || STATIC_ASSETS.test(path);
+}
 
 /** 预算守卫：动态路由（非静态页）暂停时返回 503 页面 */
 export async function budgetGuard(c: Context, next: Next) {
   const path = c.req.path;
-  if (STATIC_PAGES.has(path) || STATIC_ASSETS.test(path)) {
+  if (isStaticPage(path)) {
     await next();
     return;
   }

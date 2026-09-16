@@ -11,6 +11,7 @@ import {
 } from "../db";
 import { decryptSecret, encryptSecret } from "../utils/crypto";
 import { penalize } from "../utils/audit";
+import { t } from "../i18n";
 import {
   isBlatantlyInvalidKey,
   isMaliciousDomain,
@@ -66,11 +67,12 @@ ROUTER.post("/fetch-models", requireApiUser, async (c) => {
   const body = await c.req.parseBody();
   const apiUrl = String(body.api_url ?? "").trim();
   const apiKey = String(body.api_key ?? "").trim();
+  const lang = c.get("lang");
 
   if (!validateApiUrl(apiUrl).ok || isBlatantlyInvalidKey(apiKey)) {
     return c.html(
       <div id="model-picker" class="model-picker">
-        <p class="mp-err">URL 或 Key 明显无效，无法拉取。</p>
+        <p class="mp-err">{t(lang, "submit", "mp_err_fetch")}</p>
       </div>,
     );
   }
@@ -78,13 +80,13 @@ ROUTER.post("/fetch-models", requireApiUser, async (c) => {
   if (!probe.ok || !probe.models.length) {
     return c.html(
       <div id="model-picker" class="model-picker">
-        <p class="mp-warn">拉取失败：{probe.error ?? "未返回模型列表"}。可直接在下方手动输入模型名。</p>
+        <p class="mp-warn">{t(lang, "submit", "mp_warn_fetch", { err: probe.error ?? t(lang, "submit", "mp_hint_fetch") })}</p>
       </div>,
     );
   }
   return c.html(
     <div id="model-picker" class="model-picker">
-      <p class="mp-hint">勾选要暴露的模型（留空则通配全部）：</p>
+      <p class="mp-hint">{t(lang, "submit", "mp_hint_pick")}</p>
       <div style="display:flex;flex-wrap:wrap;gap:8px">
         {probe.models.slice(0, 30).map((m) => (
           <label class="pick-chip">
@@ -93,7 +95,7 @@ ROUTER.post("/fetch-models", requireApiUser, async (c) => {
           </label>
         ))}
       </div>
-      <p class="mp-hint" style="margin-top:10px">选中的模型会自动同步到下方「模型」输入框。</p>
+      <p class="mp-hint" style="margin-top:10px">{t(lang, "submit", "mp_hint_sync")}</p>
     </div>,
   );
 });
@@ -101,6 +103,7 @@ ROUTER.post("/fetch-models", requireApiUser, async (c) => {
 /** 提交渠道（见 4.3 / 5.2）：即时校验通过才入池 */
 ROUTER.post("/", requireApiUser, async (c) => {
   const user = c.get("user");
+  const lang = c.get("lang");
   const body = await c.req.parseBody();
 
   const provider = String(body.provider ?? "").trim();
@@ -109,25 +112,31 @@ ROUTER.post("/", requireApiUser, async (c) => {
 
   // 授权声明必须勾选（十一合规）
   if (body.agree === undefined) {
-    return c.html(<SubmitPage user={user} contributions={[]} flash="请先勾选授权声明" />);
+    return c.html(<SubmitPage user={user} contributions={[]} flash={t(lang, "submit", "flash_agree")} lang={lang} env={c.env} />);
   }
 
   const urlCheck = validateApiUrl(apiUrl);
   if (!urlCheck.ok) {
-    return c.html(<SubmitPage user={user} contributions={[]} flash={urlCheck.message} />);
+    const key =
+      urlCheck.kind === "api_url_https"
+        ? "v_api_url_https"
+        : urlCheck.kind === "api_url_host"
+          ? "v_api_url_host"
+          : "v_api_url";
+    return c.html(<SubmitPage user={user} contributions={[]} flash={t(lang, "errors", key)} lang={lang} env={c.env} />);
   }
   const providerCheck = validateProvider(provider);
   if (!providerCheck.ok) {
-    return c.html(<SubmitPage user={user} contributions={[]} flash={providerCheck.message} />);
+    return c.html(<SubmitPage user={user} contributions={[]} flash={t(lang, "errors", "v_provider")} lang={lang} env={c.env} />);
   }
   if (isBlatantlyInvalidKey(apiKey)) {
     await penalize(c.env, user.id, "invalid_key");
-    return c.html(<SubmitPage user={user} contributions={[]} flash="Key 明显无效，已拒绝入池（信誉扣减）" />);
+    return c.html(<SubmitPage user={user} contributions={[]} flash={t(lang, "submit", "flash_invalid_key")} lang={lang} env={c.env} />);
   }
   const host = new URL(apiUrl).hostname;
   if (isMaliciousDomain(host)) {
     await penalize(c.env, user.id, "malicious");
-    return c.html(<SubmitPage user={user} contributions={[]} flash="疑似恶意地址，已拒绝并记录" />);
+    return c.html(<SubmitPage user={user} contributions={[]} flash={t(lang, "submit", "flash_malicious")} lang={lang} env={c.env} />);
   }
 
   // 模型：优先用户勾选/输入的 models；兼容 chips 数组
@@ -142,7 +151,17 @@ ROUTER.post("/", requireApiUser, async (c) => {
       : JSON.stringify(["*"]);
   }
   const ml = validateModelsList(modelsJson);
-  if (!ml.ok) return c.html(<SubmitPage user={user} contributions={[]} flash={ml.message} />);
+  if (!ml.ok) {
+    const key =
+      ml.kind === "models_empty"
+        ? "v_models_empty"
+        : ml.kind === "models_too_many"
+          ? "v_models_too_many"
+          : ml.kind === "models_bad"
+            ? "v_models_bad"
+            : "v_models_format";
+    return c.html(<SubmitPage user={user} contributions={[]} flash={t(lang, "errors", key)} lang={lang} env={c.env} />);
+  }
 
   const weight = Math.min(5, Math.max(0.1, Number(body.weight) || 1));
 
@@ -166,24 +185,25 @@ ROUTER.post("/", requireApiUser, async (c) => {
     success_rate: 1,
     total_requests: 0,
     failed_requests: 0,
-    last_error: probe.ok ? null : (probe.error ?? "校验未通过"),
+    last_error: probe.ok ? null : (probe.error ?? "validation failed"),
     last_success_at: probe.ok ? now : null,
   });
 
   const contributions = await listChannelsByOwner(c.env, user.id);
   if (probe.ok) {
     return c.html(
-      <SubmitPage user={user} contributions={contributions} flash="校验通过，已自动入池，贡献加分将于明日生效。" flashOk />,
+      <SubmitPage user={user} contributions={contributions} flash={t(lang, "submit", "flash_circular_ok")} flashOk lang={lang} env={c.env} />,
     );
   }
   return c.html(
-    <SubmitPage user={user} contributions={contributions} flash={`校验未通过，暂不入池：${probe.error}`} />,
+    <SubmitPage user={user} contributions={contributions} flash={t(lang, "submit", "flash_circular_fail", { err: probe.error ?? "" })} lang={lang} env={c.env} />,
   );
 });
 
 /** 重新校验（修复后自动入池，B.1） */
 ROUTER.post("/:id/validate", requireApiUser, async (c) => {
   const user = c.get("user");
+  const lang = c.get("lang");
   const id = Number(c.req.param("id"));
   const ch = await getChannelById(c.env, id);
   if (!ch || ch.owner_user_id !== user.id) return c.notFound();
@@ -193,20 +213,21 @@ ROUTER.post("/:id/validate", requireApiUser, async (c) => {
   await updateChannel(c.env, id, {
     is_valid: probe.ok ? 1 : 0,
     is_active: probe.ok ? 1 : 0,
-    last_error: probe.ok ? null : (probe.error ?? "校验未通过"),
+    last_error: probe.ok ? null : (probe.error ?? "validation failed"),
     last_success_at: probe.ok ? new Date().toISOString() : ch.last_success_at,
   });
   const fresh = await getChannelById(c.env, id);
-  return c.html(fresh ? <ChannelRow c={fresh} /> : <></>);
+  return c.html(fresh ? <ChannelRow c={fresh} lang={lang} /> : <></>);
 });
 
 /** 贡献者重新激活（重置熔断印记，B.2） */
 ROUTER.post("/:id/reactivate", requireApiUser, async (c) => {
   const user = c.get("user");
+  const lang = c.get("lang");
   const id = Number(c.req.param("id"));
   await reactivateChannel(c.env, id, user.id);
   const ch = await getChannelById(c.env, id);
-  return c.html(ch ? <ChannelRow c={ch} /> : <></>);
+  return c.html(ch ? <ChannelRow c={ch} lang={lang} /> : <></>);
 });
 
 /** 删除渠道（回收贡献，4.3） */
