@@ -51,7 +51,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=${{ github.event.inputs.image_tag }},enable={{true}}
+            type=raw,value=${{ github.event.inputs.image_tag }},enable=true
             type=sha
 
       - name: Build and push
