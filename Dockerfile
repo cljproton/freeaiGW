@@ -16,6 +16,10 @@ FROM node:22-slim
 ENV NODE_ENV=production
 WORKDIR /app
 
+# 安装 openssl（entrypoint 需用于生成 ENCRYPTION_KEY/CRON_TOKEN）
+RUN apt-get update && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
+
 # 数据目录（挂载卷持久化；entrypoint 负责修复 bind mount 权限）
 RUN mkdir -p /app/data
 
