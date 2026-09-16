@@ -1,6 +1,6 @@
 # AGENTS.md
 
-聚合免费 AI API 免费计划的代理网关，部署于 **Cloudflare Workers（Hono + D1 + KV）或自托管 VPS（Node + better-sqlite3 + 文件 KV，Docker 可选）**，前端为 htmx + Tailwind（CDN），全站中英双语。参考 README.md 与权威设计文档 `docs/PLAN.md`（含调度/配额/反滥用/激励/惩罚各章附录，i18n/AdSense/Node 运行时见**附录 K**，代码注释里的"见附录 X"均指向它）。
+聚合免费 AI API 免费计划的聚合网关，部署于 **Cloudflare Workers（Hono + D1 + KV）或自托管 VPS（Node + better-sqlite3 + 文件 KV，Docker 可选）**，前端为 htmx + Tailwind（CDN），全站中英双语。参考 README.md 与权威设计文档 `docs/PLAN.md`（含调度/配额/反滥用/激励/惩罚各章附录，i18n/AdSense/Node 运行时见**附录 K**，代码注释里的"见附录 X"均指向它）。
 
 ## 文档同步（强制约定）
 
@@ -43,7 +43,7 @@ npm run publish -- --migrate      # 首次部署/改表：先 wrangler d1 migrat
 - 反滥用（`src/utils/pow.ts` + 路由）：PoW 难度 4（挑战存 KV `GATE`，一次性，TTL 600s）、蜜罐 `website` 字段、提交时序 `<2.5s 拒绝`、同 IP 每日注册 ≤20（`MAX_REGISTER_PER_IP_PER_DAY`）。
 - 惩罚日志伪造模型名 `惩罚:...`（见 `src/routes/cron.ts:107` `model LIKE '惩罚:%'`），信誉分日增逻辑依赖它，勿改名。
 
-## 调度与代理（`src/routes/proxy.ts` + `src/scheduler/pickChannel.ts`）
+## 调度与转发（`src/routes/proxy.ts` + `src/scheduler/pickChannel.ts`）
 
 - 选渠道 = SQL LIKE 粗筛（`'"%*%"'` 或 `%"model"`）→ 精确匹配（含 `*` 通配）→ 加权随机（`weight × success_rate`，下限 0.1/0.01）。
 - 重试链只对 5xx / 网络错误重试；**4xx 立即短路**返回给客户端。失败记录 EMA 滚动 success_rate（折半衰减在 Cron）。

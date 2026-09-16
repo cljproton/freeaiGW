@@ -1,215 +1,214 @@
 # FreeAI Gateway
 
-聚合免费 AI API 免费计划的高可用代理网关，可部署于 **Cloudflare Workers**（Hono + D1 + KV）
-或 **自托管 VPS**（Node + better-sqlite3 + 文件 KV，Docker Compose 一键启动）。
+**English** | [简体中文](README.zh-CN.md)
 
-自动调度多条上游 Channel，提供统一 `sk-xxx` 网关 Token、配额分层、熔断重试、信誉分惩罚、
-贡献激励与预算保护，全部自动化、无人工干预。全站中英双语（`?to=zh`/`?to=en` 切换）。
+A highly available AI API gateway that aggregates free-tier AI APIs. Deployable on **Cloudflare Workers** (Hono + D1 + KV) or **self-hosted VPS** (Node + better-sqlite3 + file-based KV, one-command Docker Compose).
 
-## 功能特性
+It automatically schedules multiple upstream channels behind a single `sk-xxx` gateway token, with tiered quotas, circuit breaking, automatic failover, reputation-based penalties, contribution incentives, and budget protection — fully automated, no manual intervention. The whole site is bilingual (EN / 中文).
 
-- **合一账号**：匿名制注册/登录（仅用户名 + 密码），一人一个网关 Token
-- **FreeAI 兼容**：`POST /v1/chat/completions`，Bearer Token 认证
-- **双语界面**：中英 i18n，`ln` cookie 持久化，复制/粘贴即切换
-- **上游调度**：模型匹配 + 权重轮询 + 失败重试 + 自动健康统计（成功率、熔断）
-- **配额分层**：按信誉分 / 新用户动态分级（正常 100 次/日 + 300k token）
-- **反滥用（自研，无第三方依赖）**：Proof-of-Work（难度 4）+ 蜜罐 + 提交时序 + KV 一次性防重放 + IP 注册限流
-- **熔断与自动恢复**：成功率阈值熔断、30 分钟冷却、自动探测复用
-- **信誉分系统**：宽松惩罚、永不封禁，行为恢复自动回升
-- **贡献激励**：提交 Channel 获 CR 分档 + 新手加成，贡献与使用配额联动
-- **预算保护**：采样统计、超阈值暂停上游调用（静态页保留）
-- **每日 Cron**：配额重置、日志清理、健康恢复、预算放闸
-- **加密存储**：上游 `api_key` 使用 `ENCRYPTION_KEY` 加密入库，Token 仅存 SHA-256 哈希
-- **双运行时**：同一套 `src/` 同时跑在 Cloudflare Workers 与纯 Node（D1→SQLite、KV→文件）
+## Features
 
-## 架构
+- **Unified account**: anonymous sign-up (username + password only), one gateway token per user ([details](#security-design))
+- **OpenAI compatible**: `POST /v1/chat/completions` with Bearer token auth
+- **Bilingual UI**: EN/zh i18n via `ln` cookie, language-prefixed URLs (`/en`, `/zh`)
+- **Upstream scheduling**: model matching + weighted routing + retry + automatic health stats (success rate, circuit breaking)
+- **Tiered quotas**: dynamic tiers by reputation / new-user status (normal: 100 calls/day + 300k tokens)
+- **Anti-abuse (self-built, zero third-party deps)**: Proof-of-Work (difficulty 4) + honeypot + submission timing + KV one-time replay guard + per-IP registration rate limit
+- **Circuit breaking & auto-recovery**: success-rate threshold, 30-minute cooldown, auto probe & reuse
+- **Reputation system**: lenient penalties, never bans, auto recovery through good behavior
+- **Contribution incentives**: submit channels to earn CR tiers + newbie bonus, contributions boost your daily quota
+- **Budget protection**: sampled usage estimation, upstream calls paused above threshold (static pages remain)
+- **Daily cron**: quota reset, log cleanup, health recovery, budget reopen
+- **Encrypted storage**: upstream `api_key` encrypted with `ENCRYPTION_KEY`; tokens stored as SHA-256 hashes only
+- **Dual runtime**: the same `src/` runs on Cloudflare Workers and pure Node (D1→SQLite, KV→files)
+
+## Architecture
 
 ```
                         ┌──────────────────────────────────────┐
-  User / htmx 页面 ───▶ │          Cloudflare Workers          │
-  OpenAI 兼容客户端 ──▶ │   Hono 路由 + 中间件（预算/配额/限流）   │
+  User / htmx pages  ──▶ │        Cloudflare Workers            │
+  OpenAI-compatible  ──▶ │   Hono routes + middleware (budget /  │
+        clients          │   quota / rate-limit)                │
                         │   ┌────────────────────────────┐     │
-                        │   │  调度引擎（模型匹配/重试）    │     │
+                        │   │  Scheduler (model match /   │     │
+                        │   │  retry / failover)          │     │
                         │   └────────────┬───────────────┘     │
-                        │                ▼                    │
                         └────────────┬───────────────────────┘
                                      ▼
-                         上游免费 AI Channel（多 provider）
+                  Upstream free AI channels (multiple providers)
 ```
 
-### 路由
+### Routes
 
-| 方法与路径 | 说明 |
-|------------|------|
-| `GET /` | 首页：接入示例 + 可用模型列表（含健康状态） |
-| `GET/POST /auth` | 注册 / 登录 / 提示（PoW 无感校验） |
-| `POST /auth/logout` | 登出 |
-| `GET /dashboard` | 网关 Token 卡片 + 用量 + 贡献 |
-| `GET /submit` | 贡献者提交 / 管理 Channel |
-| `GET /api/tokens/*` | Token 生成 / 重置（一次性明文展示） |
-| `GET/POST /api/channels/*` | Channel 查看 / 提交 / 重校验 / 删除 / fetch-models |
-| `POST /v1/chat/completions` | **代理主接口**（Bearer `sk-xxx`） |
-| `GET /v1/models` | 可用模型列表 |
-| `GET /lang` | 语言切换（`?to=zh` / `?to=en`，写 `ln` cookie） |
-| `POST /cron/run` | 每日调度任务（header `x-cron-token` 校验） |
-| `GET /en`、`GET /zh`、`GET /{en\|zh}/docs`、`GET /{en\|zh}/terms` | 语言前缀页面（canonical 形态，支持 hreflang；无前缀公开页自动 301 规范化） |
-| `GET /robots.txt` | 爬虫策略（允许公开页，禁抓后台/API；含 Sitemap 索引） |
-| `GET /sitemap.xml` | 双语站点地图（hreflang 互指） |
-| `GET /llms.txt`、`GET /llms.md` | GEO：面向 AI 大模型的站点摘要与完整参考 |
+| Method & Path | Description |
+|---------------|-------------|
+| `GET /` | Homepage: integration example + available model list (with health status) |
+| `GET/POST /auth` | Sign up / log in (transparent PoW challenge) |
+| `POST /auth/logout` | Log out |
+| `GET /dashboard` | Gateway token card + usage + contributions |
+| `GET /submit` | Contributors submit / manage channels |
+| `GET /api/tokens/*` | Token generation / reset (one-time plaintext display) |
+| `GET/POST /api/channels/*` | Channel view / submit / re-validate / delete / fetch-models |
+| `POST /v1/chat/completions` | **Main gateway endpoint** (Bearer `sk-xxx`) |
+| `GET /v1/models` | Available model list |
+| `GET /lang` | Language switch (`?to=zh` / `?to=en`, sets `ln` cookie) |
+| `POST /cron/run` | Daily scheduled tasks (header `x-cron-token` verified) |
+| `GET /en`, `GET /zh`, `GET /{en\|zh}/docs`, `GET /{en\|zh}/terms` | Language-prefixed pages (canonical form with hreflang; unprefixed public pages 301-redirect) |
+| `GET /robots.txt` | Crawler policy (public pages allowed, admin/API disallowed; includes Sitemap) |
+| `GET /sitemap.xml` | Bilingual sitemap with hreflang alternates |
+| `GET /llms.txt`, `GET /llms.md` | GEO: site summary & full reference for LLMs |
 
-## 快速开始（本地开发，Workers 模式）
+## Quick Start (local development, Workers mode)
 
-前置：Node.js ≥ 18、Cloudflare 账号（已开通 D1 与 KV）、wrangler 4.x。
+Prerequisites: Node.js ≥ 18, Cloudflare account (D1 + KV enabled), wrangler 4.x.
 
 ```bash
 npm install
 
-# 1. 本地资源：创建 D1 数据库与两个 KV namespace，将真实 ID 填入 wrangler.toml
-#    （参考 wrangler.toml.example，控制台资源页可查 ID）
+# 1. Local resources: create a D1 database and two KV namespaces, fill real IDs into wrangler.toml
+#    (see wrangler.toml.example; IDs are on the Cloudflare dashboard)
 cp wrangler.toml.example wrangler.toml
 
-# 2. 本地密钥（仅为本地开发；生产用 wrangler secret 配置同名密钥）
+# 2. Local secrets (dev only; production uses wrangler secret)
 cat > .dev.vars <<'EOF'
-ENCRYPTION_KEY=<32位随机hex>
-CRON_TOKEN=<随机字符串>
+ENCRYPTION_KEY=<32-hex random>
+CRON_TOKEN=<random string>
 EOF
 
-# 3. 初始化本地数据库并启动开发服务器
+# 3. Initialize local DB and start the dev server
 npm run db:migrate:local
 npm run dev            # → http://127.0.0.1:8787
 ```
 
-## 快速开始（自托管 VPS，Node 模式）
+## Quick Start (self-hosted VPS, Node mode)
 
-无需 Cloudflare 账户 / D1 / KV，纯 Node 运行同一套代码（better-sqlite3 + 文件 KV）：
+No Cloudflare account / D1 / KV needed — pure Node runs the same codebase (better-sqlite3 + file KV):
 
 ```bash
 npm install
-cp .env.example .env    # 编辑 ENCRYPTION_KEY / CRON_TOKEN / PORT / DATA_DIR 等
-npm start:node          # → http://127.0.0.1:8791（首次启动自动建表迁移）
+cp .env.example .env    # edit ENCRYPTION_KEY / CRON_TOKEN / PORT / DATA_DIR etc.
+npm run start:node      # → http://127.0.0.1:8791 (DB tables auto-migrated on first run)
 ```
 
-本地手动触发每日 Cron：`POST /cron/run` + header `x-cron-token`。
+Manually trigger the daily cron: `POST /cron/run` + header `x-cron-token`.
 
-## 部署（Cloudflare Workers）
+## Deploy (Cloudflare Workers)
 
 ```bash
-npm run publish                 # 类型检查 → 跳过远程 D1 迁移 → 部署
-npm run publish -- --migrate    # 首次部署：先应用远程 D1 迁移再部署
+npm run publish                 # typecheck → skip remote D1 migration → deploy
+npm run publish -- --migrate    # first deploy / schema change: apply remote D1 migration first
 ```
 
-生产密钥请在部署前配置：
+Set production secrets before deploying:
 
 ```bash
 npx wrangler secret put ENCRYPTION_KEY
 npx wrangler secret put CRON_TOKEN
 ```
 
-## 部署（自托管 VPS，Docker Compose）
+## Deploy (self-hosted VPS, Docker Compose)
+
+The compose file pulls the **prebuilt GHCR image** by default — no local build required:
 
 ```bash
-cp .env.example .env            # 填入 ENCRYPTION_KEY（32 位 hex）与 CRON_TOKEN
-docker compose up -d            # 构建 + 启动，数据持久化于 ./data 卷
-docker compose logs -f          # 查看日志
+cp .env.example .env            # optional config; ENCRYPTION_KEY & CRON_TOKEN are auto-generated on first start
+docker compose up -d            # pull + start, data persisted in ./data volume
+docker compose logs -f          # view logs
 ```
 
-单容器运行（无 Compose）：
+- `ENCRYPTION_KEY` and `CRON_TOKEN` are **auto-generated on first container start** (`openssl rand -hex 16`); no manual setup needed.
+- Custom image source / tag via `GHCR_REPO` and `IMAGE_TAG`; default `ghcr.io/cljproton/freeaigw:latest`.
+
+Single container without Compose:
 
 ```bash
-docker build -t freeai-gateway .
-docker run -d --name freeai -p 8791:8791 \
-  -e ENCRYPTION_KEY=<32位hex> -e CRON_TOKEN=<随机串> \
-  -v ./data:/app/data freeai-gateway
+docker pull ghcr.io/cljproton/freeaigw:latest
+docker run -d --name freeai -p 8791:8791 -v ./data:/app/data \
+  ghcr.io/cljproton/freeaigw:latest
 ```
 
-## GitHub Actions：自动构建并发布镜像
+## GitHub Actions: build & publish the image
 
-`.github/workflows/docker-publish.yml`：push 到 `main`（打 `v*` tag 亦可）触发 **typecheck 门禁 + 多架构
-（amd64/arm64）镜像构建**，推送 GHCR（`GITHUB_TOKEN`，无需额外 secret）：
+`.github/workflows/docker-publish.yml` is **manually triggered** (`workflow_dispatch`, optional `image_tag` input):
+typecheck gate → multi-arch (amd64/arm64) build → push to GHCR using `GITHUB_TOKEN` (no extra secrets).
 
-```bash
-docker pull ghcr.io/<owner>/<repo>:latest
-# 发版本：git tag v0.2.0 && git push --tags  → 同时产出 :v0.2.0
-```
+## Configuration
 
-## 配置项
+| Group | Variable | Default | Description |
+|-------|----------|---------|-------------|
+| Quota | `MAX_CALLS_PER_USER_DAY` | `100` | Daily call limit per normal/user |
+| Quota | `MAX_TOKENS_PER_USER_DAY` | `300000` | Daily token limit per user |
+| New user | `NEW_USER_DAYS` | `7` | New-user window (days) |
+| New user | `NEW_USER_CALLS_QUOTA` | `50` | Daily call limit for new users |
+| New user | `NEW_USER_TOKENS_QUOTA` | `150000` | Daily token limit for new users |
+| Session | `SESSION_TTL` | `604800` | Session KV TTL (seconds) |
+| Anti-abuse | `MAX_REGISTER_PER_IP_PER_DAY` | `20` | Max registrations per IP per day |
+| Circuit | `CIRCUIT_*` | - | Success-rate threshold / min requests / cooldown / deactivation count |
+| Retry | `MAX_PROXY_RETRIES` | `2` | Max upstream switches per call |
+| Reputation | `REPUTATION_*` | - | Gain / penalty weights (Appendix J) |
+| Contribution | `CONTRIBUTION_*` | - | CR tiers and bonuses (Appendix G) |
+| Budget | `BUDGET_PAUSE_THRESHOLD` | `0.9` | Pause threshold |
+| Budget | `BUDGET_SAMPLE_RATE` | `1/200` | Sampling frequency |
+| SEO | `PUBLIC_BASE_URL` | `""` | Canonical/OG/sitemap base URL (empty = request Host) |
 
-| 分组 | 变量 | 默认 | 说明 |
-|------|------|------|------|
-| 配额 | `MAX_CALLS_PER_USER_DAY` | `100` | 正常用户每日调用次数上限 |
-| 配额 | `MAX_TOKENS_PER_USER_DAY` | `300000` | 正常用户每日 token 上限 |
-| 新用户 | `NEW_USER_DAYS` | `7` | 新用户判定天数 |
-| 新用户 | `NEW_USER_CALLS_QUOTA` | `50` | 新用户每日调用上限 |
-| 新用户 | `NEW_USER_TOKENS_QUOTA` | `150000` | 新用户每日 token 上限 |
-| 会话 | `SESSION_TTL` | `604800` | 会话 KV TTL（秒） |
-| 反滥用 | `MAX_REGISTER_PER_IP_PER_DAY` | `20` | 同 IP 每日注册账号上限 |
-| 熔断 | `CIRCUIT_*` | - | 成功率阈值 / 最少请求数 / 冷却时长 / 下架次数 |
-| 重试 | `MAX_PROXY_RETRIES` | `2` | 单次调用最多切换上游次数 |
-| 信誉分 | `REPUTATION_*` | - | 加分 / 各类扣分权重（见附录 J） |
-| 贡献 | `CONTRIBUTION_*` | - | CR 分档与加成（见附录 G） |
-| 预算 | `BUDGET_PAUSE_THRESHOLD` | `0.9` | 超出暂停阈值 |
-| 预算 | `BUDGET_SAMPLE_RATE` | `1/200` | 采样计数频率 |
-| SEO | `PUBLIC_BASE_URL` | `""` | canonical/OG/sitemap 统一基址（空则按请求 Host） |
+Full reference in `docs/PLAN.md` Appendix D; VPS/Node-specific config (Appendix K: `PORT`, `DATA_DIR`, `CRON_SCHEDULE`, and Workers-mode `ADSENSE_SLOT` / `ADSENSE_CLIENT`).
 
-完整释义见 `docs/PLAN.md` 附录 D；VPS/Node 专用配置见 `docs/PLAN.md` 附录 K（`PORT`、`DATA_DIR`、`CRON_SCHEDULE`，以及 Worker 模式的 `ADSENSE_SLOT` / `ADSENSE_CLIENT`）。
+## Data Model
 
-## 数据模型
+- **users**: account, PBKDF2 password hash, reputation, contribution tier, IP
+- **user_tokens**: unique gateway token per user (SHA-256 hash + prefix hint only)
+- **channels**: contributor upstream keys (encrypted) + health metadata (success rate / circuit / offlined)
+- **user_quota**: daily per-user usage (calls / tokens)
+- **usage_log**: call audit (model, upstream, status, tokens)
+- **ip_register_log**: per-IP registration counter
 
-- **users**：账号、PBKDF2 密码哈希、信誉分、贡献档位、IP
-- **user_tokens**：每个用户唯一网关 Token（仅存 SHA-256 哈希 + 前缀提示）
-- **channels**：贡献者上游 Key（加密）+ 健康元数据（成功率/熔断/下架）
-- **user_quota**：用户日用量（调用次数 / token）
-- **usage_log**：调用审计（模型、上游、状态、tokens）
-- **ip_register_log**：同 IP 注册计数
+## Security Design
 
-## 安全设计
+- **Passwords**: PBKDF2 (low iteration, ≤10ms CPU, lightweight protection for anonymous accounts)
+- **Gateway token**: one-time plaintext display; only hash stored; reset invalidates instantly
+- **Upstream keys**: symmetric encryption with `ENCRYPTION_KEY`; `key_hint` masked display
+- **Sign-up/login anti-abuse** (no third-party deps):
+  1. **PoW**: server issues a random salt; the client solves `SHA-256(salt:nonce)` with ≥4 leading zero hex (~65k hashes, <0.5s on modern devices)
+  2. **Honeypot**: hidden `website` field — any fill is rejected
+  3. **Timing**: submission faster than 2.5s or older than 10 minutes is rejected
+  4. **One-time replay guard**: challenge stored in KV (TTL 10 min), deleted on verification
+- **IP rate limit**: ≤20 registrations per IP per day; temporary lockout after repeated login failures
+- **Budget protection**: sampled estimation, global upstream pause above threshold (static pages & login kept)
 
-- **密码**：PBKDF2（低迭代，可控在 10ms CPU 内，匿名制轻量防护）
-- **网关 Token**：一次性明文展示，库中仅存哈希，重置立即失效
-- **上游 Key**：`ENCRYPTION_KEY` 对称加密，`key_hint` 提示脱敏展示
-- **注册/登录反滥用**（无第三方依赖）：
-  1. **PoW**：服务端下发随机盐，客户端基于
-     `SHA-256(salt:nonce)` 前缀零 ≥ 4 计算工作量（约 6.5 万次哈希，现代设备不足 0.5s）
-  2. **蜜罐**：隐藏 `website` 字段，被填充即拒绝
-  3. **时序**：`got_ts` 距提交不足 2.5s 或超 10 分钟即拒绝
-  4. **一次性防重放**：挑战存 KV（TTL 10 分钟），验证后立即删除，重放无效
-- **IP 限流**：注册同 IP 每日最多 20 个账号；登录失败过多临时锁定
-- **预算保护**：采样估算，超阈值全局暂停上游调用，保留静态页与登录
-
-## 项目结构
+## Project Structure
 
 ```
 src/
-├── index.ts            # Hono 入口 + Cron scheduled handler
-├── types.ts            # Env 类型（wrangler.toml vars）
+├── index.ts            # Hono entry + Cron scheduled handler
+├── types.ts            # Env types (wrangler.toml vars)
 ├── config.ts
-├── db/                 # D1 访问层 + 表结构类型
-├── platform/           # 存储抽象：Workers 实现 + Node 实现（better-sqlite3/文件 KV）
-├── node/entry.ts       # 纯 Node 入口（node:http + .env + node-cron）
-├── utils/              # crypto（PBKDF2/密码/token）、pow、audit、i18n、seo（canonical/JSON-LD）
-├── middleware/         # auth / budget / quota / rate-limit / seo（语言前缀 + 规范化）
-├── routes/             # pages / auth / tokens / channels / proxy / cron / seo（robots/sitemap/llms）
-└── views/              # htmx + Tailwind 页面（含内联 PoW 脚本，中英双语）
-migrations/             # D1 SQL 迁移（Node 模式自动应用）
-scripts/publish.sh      # 一键发布（可选 --migrate）
-dist-node/              # Node 模式 esbuild 产物
-docs/PLAN.md            # 完整设计文档（架构/调度/预算/激励/惩罚等）
+├── db/                 # D1 access layer + row types
+├── platform/           # Storage abstraction: Workers impl + Node impl (better-sqlite3 / file KV)
+├── node/entry.ts       # Pure Node entry (node:http + .env + node-cron)
+├── utils/              # crypto (PBKDF2/password/token), pow, audit, i18n, seo (canonical/JSON-LD)
+├── middleware/         # auth / budget / quota / rate-limit / seo (language prefix + normalization)
+├── routes/             # pages / auth / tokens / channels / proxy / cron / seo (robots/sitemap/llms)
+└── views/              # htmx + Tailwind pages (inline PoW script, bilingual)
+migrations/             # D1 SQL migrations (auto-applied in Node mode)
+scripts/publish.sh      # One-shot publish (optional --migrate)
+dist-node/              # Node-mode esbuild output
+docs/PLAN.md            # Full design document (architecture / scheduling / budget / incentives / penalties)
 ```
 
-## 文档
+## Documentation
 
-- `docs/PLAN.md`：详细设计方案，含调度引擎（第五章）、配额分层（5.5）、Cron（第六章）、
-  反滥用（附录 A）、贡献激励（附录 G）、预算保护（附录 I）、惩罚机制（附录 J）、
-  Node/VPS 运行时与 i18n（附录 K）、SEO/GEO 与镜像发布（附录 L）
+- `docs/PLAN.md`: detailed design — scheduling engine (Ch.5), quota tiers (5.5), cron (Ch.6),
+  anti-abuse (Appendix A), contribution incentives (Appendix G), budget protection (Appendix I),
+  penalty system (Appendix J), Node/VPS runtime & i18n (Appendix K), SEO/GEO & image publishing (Appendix L)
 
-## 免责声明
+## Disclaimer
 
-- **仅供学习与测试**：本项目**不提供任何模型服务**，仅聚合社区成员自愿共享的免费 API 凭据；不保证可用性、稳定性或任何 SLA。
-- **上游条款风险**：共享 API Key 可能违反相关厂商的服务条款（ToS），由此产生的账号封禁、法律风险与任何直接或间接损失，**由提交者自行承担**。
-- **凭据保护尽力而为**：平台对上游 Key 使用 AES-256-GCM 加密存储，Token 仅存 SHA-256 哈希，但**不承担因不可抗力导致的数据丢失或泄露责任**。
-- **服务随时可能不可用**：受限于配额、熔断、预算保护、上游厂商限流等机制，服务可能随时暂停或降级；配额/熔断/预算保护机制可能导致随时不可用。
-- **API 不暴露上游信息**：网关**不向客户端泄露任何上游服务的标识、地址、模型列表、错误详情**等内部信息；错误码仅返回标准 HTTP 状态与统一错误码。
-- **使用即接受**：使用本服务即视为已阅读、理解并同意上述条款；不同意请勿使用。
+- **Learning/testing only**: this project **provides no model services**; it only aggregates free API credentials voluntarily shared by community members. No availability, stability, or SLA guarantee.
+- **Upstream ToS risk**: sharing API keys may violate upstream vendors' Terms of Service. Any resulting account bans, legal risks, or direct/indirect losses are **borne entirely by the contributor**.
+- **Best-effort credential protection**: upstream keys are stored with AES-256-GCM encryption and tokens as SHA-256 hashes only, but the project assumes **no liability for data loss or leakage caused by force majeure**.
+- **Service may become unavailable at any time**: quotas, circuit breaking, budget protection, and upstream vendor rate limits may pause or degrade the service at any time.
+- **API does not expose upstream information**: the gateway **never leaks any upstream service identity, addresses, model lists, or error details** to clients; errors return only standard HTTP statuses and unified error codes.
+- **Use implies acceptance**: using this service means you have read, understood, and agreed to the terms above. If you disagree, do not use it.
 
 ## License
 

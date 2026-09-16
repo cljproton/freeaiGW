@@ -66,7 +66,7 @@ ${blocks}
 function llmsTxt(base: string): string {
   return `# FreeAI Gateway
 
-> Community-aggregated free AI API aggregation proxy. 社区聚合的免费 AI API 代理网关（仅供学习与测试）。
+> Community-aggregated free AI API gateway. 社区聚合的免费 AI 网关（仅供学习与测试）。
 
 FreeAI Gateway aggregates community-contributed free AI API keys behind one OpenAI-compatible endpoint and one gateway token. It requires no vendor accounts; a single key drives many models with automatic failover and circuit breaking.
 
@@ -94,9 +94,9 @@ FreeAI Gateway aggregates community-contributed free AI API keys behind one Open
 function llmsMd(base: string): string {
   return `# FreeAI Gateway — Reference
 
-FreeAI Gateway is a community-driven, free AI API aggregation proxy. It aggregates free API keys shared voluntarily by community members behind one OpenAI-compatible endpoint. You do not need vendor accounts: one gateway token drives many models.
+FreeAI Gateway is a community-driven, free AI API gateway. It aggregates free API keys shared voluntarily by community members behind one OpenAI-compatible endpoint. You do not need vendor accounts: one gateway token drives many models.
 
-> 一个社区驱动的免费 AI 代理网关：把社区成员自愿共享的免费密钥聚合到统一的 OpenAI 兼容端点，一次获取网关 Token 即可调用多个模型。
+> 一个社区驱动的免费 AI 聚合网关：把社区成员自愿共享的免费密钥聚合到统一的 OpenAI 兼容端点，一次获取网关 Token 即可调用多个模型。
 
 ## 1. Get a token / 获取 Token
 
@@ -157,7 +157,7 @@ console.log(data.choices[0].message.content);
 
 ## 5. Contribution / 贡献渠道
 
-Free API key holders can submit their keys at ${base}/submit. Keys are encrypted with AES-256-GCM and used only for proxying; deletion removes the channel immediately. Sharing keys may violate upstream vendors' terms — contributors act on their own responsibility.
+Free API key holders can submit their keys at ${base}/submit. Keys are encrypted with AES-256-GCM and used only for request forwarding; deletion removes the channel immediately. Sharing keys may violate upstream vendors' terms — contributors act on their own responsibility.
 
 Full terms: ${base}/en/terms
 `;

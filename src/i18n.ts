@@ -94,7 +94,7 @@ export const en = {
     footer_docs: "Usage Policy",
   },
   home: {
-    title: "FreeAI Gateway — Free AI API Aggregation Proxy",
+    title: "FreeAI Gateway — Free AI API Aggregation Gateway",
     tag_pool: "CHANNELS",
     h1a: "One token,",
     h1b: "talk to every free AI",
@@ -218,7 +218,7 @@ export const en = {
     my_channels: "My Channels",
     btn_delete: "Delete",
     delete_confirm: "Delete? The channel leaves the pool immediately, the contribution bonus stops at once, and this cannot be undone.",
-    empty_contributions: "You haven't submitted any channels yet. Keys are used only for proxying and can be withdrawn anytime.",
+    empty_contributions: "You haven't submitted any channels yet. Keys are used only for request forwarding and can be withdrawn anytime.",
     flash_agree: "Please tick the authorization statement first",
     flash_invalid_key: "Key is clearly invalid; rejected (reputation penalty applied)",
     flash_malicious: "Suspected malicious address; rejected and logged",
@@ -253,10 +253,10 @@ export const en = {
     terms_sub: "Not for use against vendor ToS or local law",
     t01: "01 · Nature of service",
     t01_body:
-      "FreeAI Gateway is a community-driven AI proxy gateway for learning and testing. The platform runs no models itself — it only aggregates API credentials voluntarily shared by community members.",
+      "FreeAI Gateway is a community-driven AI aggregation gateway for learning and testing. The platform runs no models itself — it only aggregates API credentials voluntarily shared by community members.",
     t02: "02 · Voluntary submission",
     t02_body:
-      "Submitting an API key affirms that you legitimately hold it, share it voluntarily, and authorize the platform to proxy traffic through it. The platform neither scrapes nor forces any credentials into its pool.",
+      "Submitting an API key affirms that you legitimately hold it, share it voluntarily, and authorize the platform to route requests through it. The platform neither scrapes nor forces any credentials into its pool.",
     t03: "03 · Disclaimer",
     t03_body:
       "Sharing an API key may violate the relevant vendor's terms of service. Any resulting account bans, legal risks, and direct or indirect losses are the submitter's own responsibility. The platform protects credentials with AES-256-GCM and never displays them in plaintext, but is not liable for data loss caused by force majeure.",
@@ -274,7 +274,7 @@ export const en = {
   },
   seo: {
     home_desc:
-      "Free AI API aggregation proxy: one OpenAI-compatible endpoint, one gateway token, many free models. Community-contributed keys with automatic failover and circuit breaking.",
+      "Free AI API aggregation gateway: one OpenAI-compatible endpoint, one gateway token, many free models. Community-contributed keys with automatic failover and circuit breaking.",
     docs_desc:
       "Usage docs for FreeAI Gateway: get a one-time gateway token, call the OpenAI-compatible /v1 API with curl, Python or JavaScript; quotas, reliability and error handling.",
     terms_desc:
@@ -316,7 +316,7 @@ export const zh: typeof en = {
     footer_docs: "使用规范",
   },
   home: {
-    title: "FreeAI Gateway — 免费 AI API 聚合代理",
+    title: "FreeAI Gateway — 免费 AI API 聚合网关",
     tag_pool: "渠道",
     h1a: "一个 Token，",
     h1b: "调通全部免费 AI",
@@ -438,7 +438,7 @@ export const zh: typeof en = {
     my_channels: "我的渠道",
     btn_delete: "删除",
     delete_confirm: "确认删除？删除后该渠道立即退出资源池，贡献加成立即失效，且无法恢复。",
-    empty_contributions: "你还没提交过渠道。密钥只用于代理转发，随时可一键撤回。",
+    empty_contributions: "你还没提交过渠道。密钥只用于请求转发，随时可一键撤回。",
     flash_agree: "请先勾选授权声明",
     flash_invalid_key: "Key 明显无效，已拒绝入池（信誉扣减）",
     flash_malicious: "疑似恶意地址，已拒绝并记录",
@@ -473,10 +473,10 @@ export const zh: typeof en = {
     terms_sub: "请勿用于违反厂商条款与法律法规的场景",
     t01: "01 · 服务性质",
     t01_body:
-      "FreeAI Gateway 是一个社区驱动、仅供学习与测试的 AI 代理网关。平台本身不提供任何模型服务，仅聚合社区成员自愿共享的 API 凭据。",
+      "FreeAI Gateway 是一个社区驱动、仅供学习与测试的 AI 网关。平台本身不提供任何模型服务，仅聚合社区成员自愿共享的 API 凭据。",
     t02: "02 · 自愿提交与授权声明",
     t02_body:
-      "提交 API Key 即视为本人合法持有该凭据、自愿共享，并授权平台将其用于代理转发。平台不爬取、不强制任何凭据入库。",
+      "提交 API Key 即视为本人合法持有该凭据、自愿共享，并授权平台将其用于请求转发。平台不爬取、不强制任何凭据入库。",
     t03: "03 · 免责声明",
     t03_body:
       "共享 API Key 可能违反相关厂商的服务条款，由此产生的账号封禁、法律风险与任何直接或间接损失，由提交者自行承担。平台尽力保护凭据（AES-256-GCM 加密存储、永不明文展示），但不承担因不可抗力导致的数据丢失责任。",
@@ -493,7 +493,7 @@ export const zh: typeof en = {
   },
   seo: {
     home_desc:
-      "免费 AI API 聚合代理：一个 OpenAI 兼容端点、一个网关 Token、调用多个免费模型。社区共享密钥，自动故障转移与熔断保护。",
+      "免费 AI API 聚合网关：一个 OpenAI 兼容端点、一个网关 Token、调用多个免费模型。社区共享密钥，自动故障转移与熔断保护。",
     docs_desc:
       "FreeAI Gateway 使用帮助：获取一次性网关 Token，用 curl、Python 或 JavaScript 调用 OpenAI 兼容 /v1 接口；配额、可靠性与错误处理。",
     terms_desc:

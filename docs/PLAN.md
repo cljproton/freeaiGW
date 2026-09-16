@@ -1,4 +1,4 @@
-# FreeAI Gateway — 聚合 AI API 代理平台 方案文档
+# FreeAI Gateway — 聚合 AI API 网关平台 方案文档
 
 > 版本：v2.0
 > 日期：2026-09-14
@@ -9,19 +9,19 @@
 
 ## 一、项目概述
 
-**FreeAI Gateway** 是一个匿名 AI API Key 聚合代理网关。
+**FreeAI Gateway** 是一个匿名 AI API Key 聚合网关。
 
 ### 核心定位
 
 - **贡献者**自愿提交自己的免费 API Key（作为 Channel/渠道）
-- **使用者**注册后获得**独立的网关 Token**（`sk-xxx` 格式，仅用于认证），通过代理网关调用 AI 服务
-- 网关内置调度引擎，自动从资源池中选择最优 Channel 进行代理转发
+- **使用者**注册后获得**独立的网关 Token**（`sk-xxx` 格式，仅用于认证），通过网关调用 AI 服务
+- 网关内置调度引擎，自动从资源池中选择最优 Channel 进行请求转发
 - 使用者的 Key **永不暴露**，所有请求由网关代为转发
 
 ### 架构示意
 
 ```
-用户 ──→ 网关 Token (sk-xxx) ──→ 代理网关 ──→ 选 Channel ──→ 厂商 API
+用户 ──→ 网关 Token (sk-xxx) ──→ 聚合网关 ──→ 选 Channel ──→ 厂商 API
   ↑                          ↑                ↑
   仅身份标识              配额+认证         Key永不暴露给用户
 ```
@@ -75,7 +75,7 @@
 │  ┌──────────┐  ┌───────────┐  ┌───────────┐  ┌──────────┐ │
 │  │ 认证模块  │  │ 网关API   │  │ 调度引擎   │  │ Cron     │ │
 │  │ 注册/登录 │  │ /v1/...  │  │ 选Channel │  │ 校验/重置│ │
-│  │ Token生成 │  │ 代理转发  │  │ 健康检查  │  │ 预算恢复 │ │
+│  │ Token生成 │  │ 请求转发  │  │ 健康检查  │  │ 预算恢复 │ │
 │  └──────────┘  └───────────┘  └───────────┘  └──────────┘ │
 │       │             │              │                  │        │
 │       ▼             ▼              ▼                  ▼        │
@@ -254,7 +254,7 @@ CREATE UNIQUE INDEX idx_user_tokens_one_active ON user_tokens(user_id) WHERE is_
 - **会话**：登录后生成随机 session token，存 KV（TTL 7 天），Cookie 携带
 - **自研反滥用（无第三方）**：注册/登录页前端 PoW（SHA-256 前缀零 ≥ 4）+ 蜜罐 + 提交时序（见附录 A）
 - **IP 注册限流**：同一 IP 24h 最多 3 个账号（`ip_register_log`，见附录 A）
-- **网关 Token 认证**：调用代理接口用 `Authorization: Bearer sk-xxx`，校验 SHA-256 hash（见 4.2 / 附录 F）
+- **网关 Token 认证**：调用网关接口用 `Authorization: Bearer sk-xxx`，校验 SHA-256 hash（见 4.2 / 附录 F）
 
 ### 5.2 Channel 提交与管理流程（贡献者）
 
@@ -377,7 +377,7 @@ async function proxyWithFailover(request: Request, env: Env, userId: number, mod
   const excludeIds: number[] = [];
   const maxRetries = 2; // 最多重试 2 次（共 3 次尝试）
   
-  // 代理前先把请求体读入内存（≤10MB），重试用同一 buffer（stream 模式下 body 只能读一次）
+  // 转发前先把请求体读入内存（≤10MB），重试用同一 buffer（stream 模式下 body 只能读一次）
   const bodyBuffer = await request.arrayBuffer();
   
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -619,7 +619,7 @@ freeaiapikey/
     │   ├── auth.ts                  # 注册 / 登录 / 登出（+ PoW/蜜罐/时序 / IP 限流）
     │   ├── tokens.ts                # 网关 Token（唯一 Token 生成/重置）
     │   ├── channels.ts              # Channel 提交/查看/重校验/删除 + fetch-models
-    │   ├── proxy.ts                 # POST /v1/chat/completions 代理+故障转移
+    │   ├── proxy.ts                 # POST /v1/chat/completions 转发+故障转移
     │   ├── quota.ts                 # 用量查询
     │   └── pages.ts                 # htmx 页面路由
     ├── scheduler/
@@ -695,7 +695,7 @@ BUDGET_SAMPLE_RATE = "1/200"
 | **Phase 3** | 认证模块 | 注册/登录/登出 + PBKDF2 + Token 生成+校验 + KV 会话 |
 | **Phase 4** | Token/Channel 管理 | 用户 Token 增删查 + Channel 提交/列表/撤回 + 授权声明 |
 | **Phase 5** | 调度引擎 | pickChannel（加权随机）+ 熔断检查 + 故障转移重试链 |
-| **Phase 6** | 代理转发 | `/v1/chat/completions` 代理 + 解密+转发+Token解析+配额更新 |
+| **Phase 6** | 请求转发 | `/v1/chat/completions` 转发 + 解密+转发+Token解析+配额更新 |
 | **Phase 7** | 前端页面 | htmx 页面 + Tailwind 样式 + 实时健康状态展示 |
 | **Phase 8** | Cron 任务 | 合并 handler + Channel 校验分批 + 重置用量 + 熔断恢复 |
 | **Phase 9** | 合规 + 部署 | 用户协议/免责声明/授权声明 + 本地测试 + `wrangler deploy` |
@@ -1212,7 +1212,7 @@ WHERE c.owner_user_id = ? AND l.user_id != c.owner_user_id
 | D1 读 | 5M 行/天 | A2 已解除 CR 聚合读放大；调度候选全表读在此量级安全 |
 | KV 写 | 1k/天 | 登录/登出 + 预算采样（≤800 写/天）安全；登出可不删 KV 靠 TTL 省写 |
 | CPU | 10ms/请求 | PBKDF2 ~40k 迭代约占 3-8ms 为最大项，量测后可视情况降至 20-30k |
-| Subrequests | 50/请求 | 代理故障转移 ≤3 次；Cron 健康校验分批 ≤50 |
+| Subrequests | 50/请求 | 故障转移 ≤3 次；Cron 健康校验分批 ≤50 |
 
 ---
 
@@ -1274,7 +1274,7 @@ export async function budgetGuard(c, next) {
 | 维度（免费限额） | 保护方式 |
 |------------------|----------|
 | Workers 请求 100k/天 | 采样估算 ≥ 90% 暂停 |
-| D1 写 100k 行/天 | 请求量 × 代理占比 × 每调用写行数 估算 ≥ 90% 暂停 |
+| D1 写 100k 行/天 | 请求量 × 转发占比 × 每调用写行数 估算 ≥ 90% 暂停 |
 | KV 写 1k/天 | 采样率 1/200 本身保障 ≤ 800/天（预算内，无需闸） |
 | CPU / Subrequests | 免费计划无超额计费风险，不设闸 |
 
@@ -1355,7 +1355,7 @@ BUDGET_SAMPLE_RATE = "1/200"
 - **切换**：`GET /lang?to=zh` 写 `ln` cookie；中间件读 cookie / `Accept-Language` 前缀，挂 `c.get("lang")`；
   htmx 局部刷新请求由前端 JS 带上 `Cookie` 自动维持语言。
 - **覆盖范围**：全部页面（首页/登录注册/仪表盘/提交/文档）、各处 flash、配额/限流提示、
-  代理 `pool_empty`/`pool_none`/`quota_exceeded` 等关键错误（**错误 `error` code 保持英文常量**，
+  网关返回的 `pool_empty`/`pool_none`/`quota_exceeded` 等关键错误（**错误 `error` code 保持英文常量**，
   仅 message 双语）。API 侧的未授权/无效 token 等 message 刻意保持英文默认，不随 cookie 变化。
 - **保留英文原样**：`惩罚:` 模型名前缀（审计与 Cron 恢复依赖 `model LIKE '惩罚:%'`，见六章）。
 - **Token 一次性明文**：注册/重置后明文 Token 仅存登录会话 flash（KV/文件，TTL 120s、读后即删），
