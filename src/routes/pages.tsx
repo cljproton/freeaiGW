@@ -69,7 +69,7 @@ ROUTER.get("/", async (c) => {
 
 ROUTER.get("/health", async (c) => {
   const health = await getHealth(c.env);
-  return c.html(<HealthPanel health={health} lang={c.get("lang")} />);
+  return c.html(<HealthPanel health={health} lang={c.get("lang")} base={canonicalBase(c)} />);
 });
 
 ROUTER.get("/dashboard", requirePageUser, async (c) => {

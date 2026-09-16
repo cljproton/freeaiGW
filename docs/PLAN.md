@@ -1397,18 +1397,21 @@ BUDGET_SAMPLE_RATE = "1/200"
 - `MAX_REGISTER_PER_IP_PER_DAY` 阈值 **3 → 20**（wrangler.toml/example、`src/platform/node.ts` 默认值、
   `src/routes/auth.tsx` fallback 同步）。附录 A.2 的同 IP 每日上限描述以其为准。
 
+
 ### K.5 容器化（Docker / Docker Compose）
 
 - `Dockerfile`：两阶段构建——build 阶段装 python3/make/g++ 编译 better-sqlite3 → 出 `dist-node/` 后
   prune dev 依赖；运行阶段 Node 22 slim、非 root（entrypoint 修复 bind-mount 权限后 `setpriv` 降权到
   node:node，主进程 UID 1000）、`/app/data` 为数据卷。
-- `docker-entrypoint.sh`：容器以 root 启动，`chown -R node:node /app/data`（bind mount 默认 root 归属，
-  非 root 进程写不了），随后 `setpriv --reuid=1000 --regid=1000` 降权执行主进程。
-- `docker-compose.yml`：单服务，`8791:8791`，env_file `.env`，`./data:/app/data` 持久化，restart 策略。
-- `.env.example`：`ENCRYPTION_KEY`（32 位 hex，必填）/ `CRON_TOKEN` / `PORT=8791` / `HOST=0.0.0.0` /
-  `DATA_DIR=./data` / `CRON_SCHEDULE`（cron 表达式）/ `ADSENSE_CLIENT`、`ADSENSE_SLOT`。
-- 首次启动自动建表（依赖内嵌迁移，见 K.3）；IMAGE 发布流水线见附录 L.7。
-
+- `docker-entrypoint.sh`：容器以 root 启动，**首次启动自动生成 `ENCRYPTION_KEY` 与 `CRON_TOKEN`**（`openssl rand -hex 16`，无需手动配置），
+  `chown -R node:node /app/data` 修复 bind mount 权限，随后 `setpriv --reuid=1000 --regid=1000` 降权执行主进程。
+- `docker-compose.yml`：默认**直接拉取 GHCR 预构建镜像**（`ghcr.io/cljproton/freeaigw:latest`），
+  通过环境变量 `GHCR_REPO` 与 `IMAGE_TAG` 可自定义镜像源/标签；`env_file: .env`，
+  端口/数据卷/重启策略均由 `.env` 变量控制（`PORT`、`DATA_DIR` 等），无需本地构建。
+- `.env.example`：`ENCRYPTION_KEY` 与 `CRON_TOKEN` **由 docker-entrypoint.sh 首次启动自动生成**，无需手动填写；
+  新增可选变量 `GHCR_REPO`（默认 `ghcr.io/cljproton/freeaigw`）与 `IMAGE_TAG`（默认 `latest`）；
+  其余：`PORT=8791`、`HOST=0.0.0.0`、`DATA_DIR=./data`、`CRON_SCHEDULE`、`ADSENSE_CLIENT`、`ADSENSE_SLOT`、`PUBLIC_BASE_URL` 均可选。
+- 首次启动自动建表（依赖内嵌迁移，见 K.3）；镜像发布流水线见附录 L.7.
 ---
 
 ## 附录 L：SEO / GEO（搜索引擎与 AI 爬虫，已落地）

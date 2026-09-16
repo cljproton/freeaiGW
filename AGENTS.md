@@ -34,6 +34,7 @@ npm run publish -- --migrate      # 首次部署/改表：先 wrangler d1 migrat
 - Node 模式源码是 ESM 无扩展名导入，**不能**直接 `node src/node/entry.ts`；用 `tsx` 或先 `build:node` 再 `start:node`。
 - better-sqlite3 事务函数禁止返回 Promise（会抛 "Transaction function cannot return a promise"）；批量写经 `src/platform/node.ts` 的同步 Executor（`makeExecutor` + `WeakMap` execMap）实现，勿改成 async。
 - 文件 KV 的 `get(key, "json")` 已按 Workers 语义解析 JSON（v 为字符串则 parse）；消费方（如 budget `gate:status`）拿到的是对象，勿再自行 parse。
+- **API 不暴露上游信息**：proxy 层**严禁向客户端泄露任何上游服务的标识、地址、模型列表、错误详情**等内部信息；错误码仅返回标准 HTTP 状态与统一错误码（见 `src/routes/proxy.ts`）。
 
 ## 安全模型（改这层代码要格外小心）
 
@@ -70,5 +71,10 @@ npm run publish -- --migrate      # 首次部署/改表：先 wrangler d1 migrat
 
 ## Docker（VPS）
 
-- `docker compose up -d` 构建并启动（Node 22 slim，非 root，`./data` 挂载持久化，端口 8791）；`.env` 从 `.env.example` 复制。
-- 容器内 `ENCRYPTION_KEY`（32 位 hex，必填）与 `CRON_TOKEN` 不可缺；`HOST=0.0.0.0` 才对外可访问。
+- `docker compose up -d` **直接拉取 GHCR 预构建镜像**（`ghcr.io/cljproton/freeaigw:latest`）启动，无需本地构建；
+  如需自定义镜像源/标签，设置 `GHCR_REPO` 与 `IMAGE_TAG` 环境变量。
+- 容器内 `ENCRYPTION_KEY` 与 `CRON_TOKEN` **由 docker-entrypoint.sh 首次启动自动生成**（`openssl rand -hex 16`），
+  无需在 `.env` 中手动填写；`.env` 仅需配置可选项（`GHCR_REPO`、`IMAGE_TAG`、`PORT`、`DATA_DIR` 等）。
+- `HOST=0.0.0.0` 才对外可访问；数据持久化于 `./data` 卷，端口默认 8791。
+- CI：`.github/workflows/docker-publish.yml` **仅支持手动触发**（`workflow_dispatch`，可选输入 `image_tag`），
+  不再自动随 push 构建；本地需镜像时 `docker pull ghcr.io/cljproton/freeaigw:latest` 即可。

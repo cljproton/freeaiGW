@@ -2,6 +2,11 @@ name: Build & Publish Docker
 
 on:
   workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "镜像标签（默认 latest）"
+        required: false
+        default: "latest"
 
 permissions:
   contents: read
@@ -46,8 +51,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=semver,pattern={{version}}
+            type=raw,value=${{ github.event.inputs.image_tag }},enable={{true}}
             type=sha
 
       - name: Build and push

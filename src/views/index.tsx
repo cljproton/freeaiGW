@@ -13,8 +13,9 @@ export interface Health {
 }
 
 /** 健康面板 htmx partial（/health 每 60s 刷新，含模型与示例） */
-export function HealthPanel(props: { health: Health; lang: Lang }) {
-  const { health, lang } = props;
+export function HealthPanel(props: { health: Health; lang: Lang; base?: string }) {
+  const { health, lang, base } = props;
+  const exampleBase = base ?? "https://your-worker.workers.dev";
   return (
     <div id="health-panel" class="mt-10" data-2col style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
       <div class="card pad">
@@ -45,7 +46,7 @@ export function HealthPanel(props: { health: Health; lang: Lang }) {
             <i style="background:#f87171"></i><i style="background:#ffc857"></i><i style="background:#3ddc97"></i>
             <span style="margin-left:6px">curl</span>
           </div>
-          <pre dangerouslySetInnerHTML={{ __html: `curl <span class="k">https://your-worker.workers.dev</span>/v1/chat/completions \\\n  -H "<span class="k">Authorization</span>: Bearer sk-${t(lang, "home", "curl_token")}" \\\n  -H "<span class="k">Content-Type</span>: application/json" \\\n  -d '{"model":"<span class="m">gpt-4o-mini</span>","messages":[{"role":"user","content":"你好"}]}'` }}></pre>
+          <pre dangerouslySetInnerHTML={{ __html: `curl <span class="k">${exampleBase}</span>/v1/chat/completions \\\n  -H "<span class="k">Authorization</span>: Bearer sk-${t(lang, "home", "curl_token")}" \\\n  -H "<span class="k">Content-Type</span>: application/json" \\\n  -d '{"model":"<span class="m">gpt-4o-mini</span>","messages":[{"role":"user","content":"你好"}]}'` }}></pre>
         </div>
       </div>
     </div>
@@ -85,7 +86,7 @@ export function IndexPage(props: { user?: DBUser | null; health: Health; lang: L
         </div>
 
         <div id="health-panel" hx-get="/health" hx-trigger="load delay:300ms, every 60s" hx-swap="outerHTML">
-          <HealthPanel health={health} lang={lang} />
+          <HealthPanel health={health} lang={lang} base={base} />
         </div>
 
         {health.budget.state === "paused" ? (
