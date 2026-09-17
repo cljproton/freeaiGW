@@ -1409,7 +1409,7 @@ BUDGET_SAMPLE_RATE = "1/200"
 - `Dockerfile`：两阶段构建——build 阶段装 python3/make/g++ 编译 better-sqlite3 → 出 `dist-node/` 后
   prune dev 依赖；运行阶段 Node 22 slim、非 root（entrypoint 修复 bind-mount 权限后 `setpriv` 降权到
   node:node，主进程 UID 1000）、`/app/data` 为数据卷。
-- `docker-entrypoint.sh`：容器以 root 启动，**首次启动自动生成 `ENCRYPTION_KEY` 与 `CRON_TOKEN`**（`openssl rand -hex 16`，无需手动配置），
+- `docker-entrypoint.sh`：容器以 root 启动。**`ENCRYPTION_KEY` 与 `CRON_TOKEN` 首次启动自动生成（`openssl rand -hex 16`，无需手动配置），并落盘到数据卷 `/app/data/.secrets`（600）——重建容器时读取复用，避免每次都换 Key 导致已入库渠道密文集体失效**；显式环境变量优先且同样落盘。
   `chown -R node:node /app/data` 修复 bind mount 权限，随后 `setpriv --reuid=1000 --regid=1000` 降权执行主进程。
 - `docker-compose.yml`：默认**直接拉取 GHCR 预构建镜像**（`ghcr.io/cljproton/freeaigw:latest`），
   通过环境变量 `GHCR_REPO` 与 `IMAGE_TAG` 可自定义镜像源/标签；`env_file: .env`，

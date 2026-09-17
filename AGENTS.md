@@ -74,6 +74,7 @@ npm run publish -- --migrate      # 首次部署/改表：先 wrangler d1 migrat
 - `docker compose up -d` **直接拉取 GHCR 预构建镜像**（`ghcr.io/cljproton/freeaigw:latest`）启动，无需本地构建；
   如需自定义镜像源/标签，设置 `GHCR_REPO` 与 `IMAGE_TAG` 环境变量。
 - 容器内 `ENCRYPTION_KEY` 与 `CRON_TOKEN` **由 docker-entrypoint.sh 首次启动自动生成**（`openssl rand -hex 16`），
+  **并持久化到数据卷 `/app/data/.secrets`（600），重建容器自动复用**——不会因 `up -d --pull always` 换 Key 使渠道密文失效；
   无需在 `.env` 中手动填写；`.env` 仅需配置可选项（`GHCR_REPO`、`IMAGE_TAG`、`PORT`、`DATA_DIR` 等）。
 - `HOST=0.0.0.0` 才对外可访问；数据持久化于 `./data` 卷，端口默认 8791。
 - CI：`.github/workflows/docker-publish.yml` **仅支持手动触发**（`workflow_dispatch`，可选输入 `image_tag`），
