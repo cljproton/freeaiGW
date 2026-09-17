@@ -312,6 +312,7 @@ async function fetchModels(apiUrl: string, apiKey: string, env: Env): Promise<st
 - 全选/清空/“支持所有 `*`”已实现；勾选上限 50 与校验器一致，超出即时拦截提示（复用 `v_models_too_many`）
 - 已选实时预览（数量），命中项自动同步到下方「模型」输入框；全选受 50 上限约束
 - 手动输入：trim、去重、非空校验；提示"模型名有误将导致调度失败"（由熔断兜底）
+- 模型名白名单（`validateModelsList`）：`[A-Za-z0-9 _\-.:/@*+]`（≤80 字符）——`/` 支持 `作者/模型` 路由格式（OpenRouter 等聚合 API）、`*` 支持"支持所有模型"通配、`@`/`+` 为 compatible 变体预留；超限/非法字符 → `v_models_bad`（"模型名称格式不正确"）
 
 #### 管理操作（我的 Channel）
 

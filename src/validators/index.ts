@@ -90,14 +90,14 @@ export function isMaliciousDomain(hostname: string): boolean {
   return SKETCHY.some((s) => h === s || h.endsWith(s));
 }
 
-/** 模型列表必须是 JSON 字符串数组，长度<=50 */
+/** 模型列表必须是 JSON 字符串数组，长度<=50；模型名允许 `作者/模型` 路由格式（OpenRouter 等聚合 API）与 `*` 通配（支持所有模型） */
 export function validateModelsList(modelsJson: string): ValidationResult {
   try {
     const arr = JSON.parse(modelsJson) as unknown;
     if (!Array.isArray(arr) || arr.length === 0) return fail("请至少选择一个模型", "models_empty");
     if (arr.length > 50) return fail("最多选择 50 个模型", "models_too_many");
     for (const m of arr) {
-      if (typeof m !== "string" || !/^[a-zA-Z0-9 _\-\.:]{1,80}$/.test(m)) {
+      if (typeof m !== "string" || !/^[a-zA-Z0-9 _\-\.:\/@*+]{1,80}$/.test(m)) {
         return fail("模型名称格式不正确", "models_bad");
       }
     }
