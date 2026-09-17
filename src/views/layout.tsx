@@ -329,6 +329,11 @@ a{color:inherit;text-decoration:none}
 .pick-chip:hover{border-color:var(--cyan)}
 .pick-chip span{font-family:var(--mono);font-size:12px}
 .pick-chip input{accent-color:var(--cyan);margin:0}
+.pick-chip.hidden{display:none}
+.mp-toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.mp-search{flex:1;min-width:160px}
+.mp-sub{margin:6px 0 10px;font-size:12.5px;color:var(--dim)}
+.mp-list{display:flex;flex-wrap:wrap;gap:8px;max-height:340px;overflow:auto;padding-right:2px}
 
 /* ---------- 空状态 ---------- */
 .empty{

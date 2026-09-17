@@ -87,9 +87,25 @@ ROUTER.post("/fetch-models", requireApiUser, async (c) => {
   return c.html(
     <div id="model-picker" class="model-picker">
       <p class="mp-hint">{t(lang, "submit", "mp_hint_pick")}</p>
-      <div style="display:flex;flex-wrap:wrap;gap:8px">
-        {probe.models.slice(0, 30).map((m) => (
-          <label class="pick-chip">
+      <div class="mp-toolbar">
+        <input
+          id="mp-search"
+          class="input mp-search"
+          type="search"
+          placeholder={t(lang, "submit", "mp_search_ph")}
+          autocapitalize="off"
+          spellcheck={false}
+        />
+        <button type="button" class="btn btn-ghost btn-sm" data-mp="all">{t(lang, "submit", "mp_select_all")}</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-mp="clear">{t(lang, "submit", "mp_clear")}</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-mp="wild">{t(lang, "submit", "mp_all_wildcard")}</button>
+      </div>
+      <p class="mp-sub" data-mp-sub data-format={t(lang, "submit", "mp_count")}>
+        {t(lang, "submit", "mp_count", { n: 0, m: probe.models.length })}
+      </p>
+      <div class="mp-list">
+        {probe.models.map((m) => (
+          <label class="pick-chip" data-mp-chip>
             <input type="checkbox" name="models_pick" value={m} />
             <span>{m}</span>
           </label>

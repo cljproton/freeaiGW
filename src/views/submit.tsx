@@ -53,7 +53,7 @@ export function SubmitPage(props: {
                     hx-post="/api/channels/fetch-models"
                     hx-include="previous input[name=api_url], previous input[name=api_key]"
                     hx-target="#model-picker"
-                    hx-swap="innerHTML"
+                    hx-swap="outerHTML"
                   >
                     {t(lang, "submit", "btn_fetch")}
                   </button>
@@ -105,6 +105,65 @@ export function SubmitPage(props: {
       </div>
 
       <AdSlot env={env} />
+    <script dangerouslySetInnerHTML={{ __html: `(function(){
+var MAX = 50, LIMIT = ${JSON.stringify(t(lang, "errors", "v_models_too_many"))};
+function picker(){ return document.getElementById("model-picker"); }
+function chips(p){ return p ? Array.prototype.slice.call(p.querySelectorAll(".pick-chip")) : []; }
+function inputs(p){ return chips(p).map(function(c){ return c.querySelector("input"); }); }
+function checked(p){ return inputs(p).filter(function(i){ return i.checked; }); }
+function sync(p){
+  var f = p && p.closest("form"), m = f && f.querySelector('input[name="models"]');
+  if (m) m.value = checked(p).map(function(i){ return i.value; }).join(", ");
+}
+function label(p){
+  var s = p && p.querySelector("[data-mp-sub]");
+  if (!s) return;
+  var fmt = s.getAttribute("data-format") || "{n} / {m}";
+  s.textContent = fmt.split("{n}").join(String(checked(p).length)).split("{m}").join(String(chips(p).length));
+}
+function filter(p){
+  var q = (document.getElementById("mp-search").value || "").trim().toLowerCase();
+  chips(p).forEach(function(c){ c.classList.toggle("hidden", !!q && c.textContent.toLowerCase().indexOf(q) === -1); });
+}
+document.addEventListener("change", function(e){
+  var t = e.target;
+  if (t && t.type === "checkbox" && t.name === "models_pick" && t.closest("#model-picker")) {
+    var p = picker();
+    if (t.checked && checked(p).length > MAX) { t.checked = false; if (LIMIT) alert(LIMIT); return; }
+    sync(p); label(p);
+  }
+});
+document.addEventListener("input", function(e){
+  var t = e.target;
+  if (t && t.id === "mp-search" && t.closest("#model-picker")) filter(picker());
+});
+document.addEventListener("keydown", function(e){
+  var t = e.target;
+  if (t && t.id === "mp-search" && e.key === "Enter") e.preventDefault();
+});
+document.addEventListener("click", function(e){
+  var b = e.target.closest && e.target.closest("[data-mp]");
+  if (!b) return;
+  var p = picker();
+  if (!p) return;
+  var act = b.getAttribute("data-mp");
+  if (act === "all") {
+    var room = MAX - checked(p).length;
+    var add = chips(p).filter(function(c){ return !c.classList.contains("hidden") && !c.querySelector("input").checked; });
+    if (add.length > room && LIMIT) alert(LIMIT);
+    add.slice(0, Math.max(0, room)).forEach(function(c){ c.querySelector("input").checked = true; });
+    sync(p); label(p);
+  } else if (act === "clear") {
+    inputs(p).forEach(function(i){ i.checked = false; });
+    sync(p); label(p);
+  } else if (act === "wild") {
+    inputs(p).forEach(function(i){ i.checked = false; });
+    var f = p.closest("form"), m = f && f.querySelector('input[name="models"]');
+    if (m) m.value = "*";
+    label(p);
+  }
+});
+})();` }} />
     </Layout>
   );
 }
