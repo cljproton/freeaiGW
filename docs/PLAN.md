@@ -579,9 +579,9 @@ async function validateChannelsBatch(env: Env) {
 
 | 页面 | 路径 | 功能 |
 |------|------|------|
-| 首页 | `/` | Hero + 接入示例 + 可用模型列表（含健康状态） |
+| 首页 | `/` | Hero + 接入示例（渠道数与可用模型移入登录后的使用面板） |
 | 注册/登录 | `/auth` | 合并一页，Tab 切换（用户名+密码 + 自研 PoW 无感校验） |
-| 使用面板 | `/dashboard` | 单 Token 卡片 + 用量 + 我的贡献 |
+| 使用面板 | `/dashboard` | 单 Token 卡片 + 用量 + 我的贡献 + 资源池统计（渠道数/模型） |
 | 提交 Channel | `/submit` | 即时校验 + 模型拉取/手动输入 + 授权声明 |
 | 使用帮助 | `/docs` | curl + Python/JS SDK 示例 |
 | 协议 | `/terms` | 用户协议 + 免责声明 |
@@ -634,9 +634,9 @@ freeaiapikey/
     │   └── audit.ts                 # 审计日志记录
     └── views/                       # htmx 前端页面模板
         ├── layout.tsx               # 公共布局
-        ├── index.tsx                # 首页（Hero + 接入示例 + 模型）
+        ├── index.tsx                # 首页（Hero + 接入示例；资源池统计面板在 dashboard）
         ├── auth.tsx                 # 注册/登录（Tab 合并）
-        ├── dashboard.tsx            # 使用面板（单 Token + 用量 + 我的贡献）
+        ├── dashboard.tsx            # 使用面板（单 Token + 用量 + 我的贡献 + 资源池统计）
         ├── submit.tsx               # 提交 Channel 页
         ├── docs.tsx                 # 使用帮助
         └── terms.tsx                # 协议页
@@ -917,14 +917,14 @@ circuit_count INTEGER DEFAULT 0,  -- 熔断印记，触发熔断 +1，>=5 自动
 │  🚀 一个 Key，接入所有免费大模型      │
 │  平台聚合社区贡献的免费 API，自动调度   │
 │                                      │
-│  [立即免费使用]  [查看可用模型]        │
+│  [立即免费使用]  [查看接入文档]      │
 │                                      │
 │  ── 一行接入 ──                       │
 │  base_url = https://gateway.xx/v1    │
 │  api_key  = sk-your-own-token        │
 │                                      │
-│  ── 可用模型 ──                       │
-│  [gpt-4o 🔵] [claude-3 🔵] [gemini 🟡]│
+│  （渠道数量与可用模型统计仅在登录后    │
+│    的「使用面板」可见，不公开聚合信息）│
 └─────────────────────────────────────┘
 ```
 
@@ -939,15 +939,15 @@ circuit_count INTEGER DEFAULT 0,  -- 熔断印记，触发熔断 +1，>=5 自动
 | 提交 Channel | 提示"正在自动校验，通过后即可使用" |
 | Token 生成 | 只展示一次完整值，提示"请立即保存" |
 | 密码保护 | 注册/登录页提示"密码与网关 Token 一样仅存哈希、无法找回，请妥善保存" |
-| 健康状态 | 绿色=正常、黄色=熔断中、红色=已下线，首页直观可见 |
+| 健康状态 | 绿色=正常、黄色=熔断中、红色=已下线，登录后使用面板直观可见 |
 
 ### C.3 页面清单（精简 7 页）
 
 | 页面 | 路径 | 复杂度 | 说明 |
 |------|------|--------|------|
-| 首页 | `/` | 公开 | Hero + 接入示例 + 模型列表 |
+| 首页 | `/` | 公开 | Hero + 接入示例（无聚合统计，隐私优先） |
 | 注册/登录 | `/auth` | 公开 | 合并一页，Tab 切换 |
-| 使用面板 | `/dashboard` | 登录 | Token 管理 + 用量 + 我的贡献 |
+| 使用面板 | `/dashboard` | 登录 | Token 管理 + 用量 + 资源池统计 + 我的贡献 |
 | 提交 Channel | `/submit` | 登录 | 单表单 + 授权声明 |
 | 使用帮助 | `/docs` | 公开 | curl + Python/JS SDK 示例 |
 | 协议 | `/terms` | 公开 | 用户协议 + 免责声明 |
@@ -1200,7 +1200,7 @@ WHERE c.owner_user_id = ? AND l.user_id != c.owner_user_id
 | 项 | 内容 |
 |----|------|
 | A5 | Channel > 50 时 Cron 校验覆盖不全 → 轮转 50/天 或依赖实时熔断为主 |
-| B2 | 首页模型列表 KV 缓存（TTL 10min，全天全表扫描） |
+| B2 | 使用面板模型列表 KV 缓存（TTL 10min，全天全表扫描；移入登录后每天仅按需读取） |
 | B4 | 多设备会话（KV key 用 session_id，允许多会话并存） |
 | B5 | 调度候选列表 KV 缓存（5min，减少每请求全表 + 密钥列拉取） |
 
@@ -1433,6 +1433,7 @@ BUDGET_SAMPLE_RATE = "1/200"
   - **带前缀的后台/API 路径**（`/en/dashboard`、`/en/auth` 等）→ 301 回无前缀版本，防 duplicate；
   - 完全不参与：`/auth`、`/dashboard`、`/submit`、`/health`、`/api/*`、`/v1`、`/cron`、`/lang`、
     `/robots.txt`、`/sitemap.xml`、`/llms.txt`、`/llms.md`（避免 htmx 片段、登录态、API 被改写）。
+    `/health` 现为登录受限接口（`requirePageUser`，未登录 302 `/auth`），供 dashboard 资源池统计每 60s 刷新。
 - `/lang?to=` 路由保留作向后兼容（写 cookie + Referer 回跳）；Layout 语言切换按钮：公开页同页切换
   （`/zh/docs ↔ /en/docs`），登录/后台页走 `/lang?to=`。
 

@@ -42,10 +42,11 @@ It automatically schedules multiple upstream channels behind a single `sk-xxx` g
 
 | Method & Path | Description |
 |---------------|-------------|
-| `GET /` | Homepage: integration example + available model list (with health status) |
+| `GET /` | Homepage: integration example (channel/model stats are login-only) |
 | `GET/POST /auth` | Sign up / log in (transparent PoW challenge) |
 | `POST /auth/logout` | Log out |
-| `GET /dashboard` | Gateway token card + usage + contributions |
+| `GET /dashboard` | Gateway token card + usage + pool stats + contributions |
+| `GET /health` | Login-protected pool stats partial (htmx 60s refresh, dashboard only) |
 | `GET /submit` | Contributors submit / manage channels |
 | `GET /api/tokens/*` | Token generation / reset (one-time plaintext display) |
 | `GET/POST /api/channels/*` | Channel view / submit / re-validate / delete / fetch-models |

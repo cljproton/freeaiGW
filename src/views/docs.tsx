@@ -9,6 +9,7 @@ import type { Seo } from "../utils/seo";
 export function DocsPage(props: { user?: DBUser | null; lang: Lang; env: Env; base?: string; seo?: Seo }) {
   const { user, lang, env, base, seo } = props;
   const sk = t(lang, "home", "sk");
+  const exampleBase = base ?? "https://your-worker.workers.dev";
   return (
     <Layout title={t(lang, "docs", "title")} user={user} active="docs" lang={lang} env={env} base={base} seo={seo}>
       <div class="page-head">
@@ -23,21 +24,21 @@ export function DocsPage(props: { user?: DBUser | null; lang: Lang; env: Env; ba
       <Section title={t(lang, "docs", "s02")}>
         <div class="codeblock">
           <div class="cb-head"><i style="background:#f87171"></i><i style="background:#ffc857"></i><i style="background:#3ddc97"></i><span style="margin-left:6px">bash</span></div>
-          <pre dangerouslySetInnerHTML={{ __html: `curl <span class="k">https://freeai-gateway.YOUR-SUBDOMAIN.workers.dev</span>/v1/chat/completions \\\n  -H "<span class="k">Authorization</span>: Bearer sk-${t(lang, "home", "curl_token")}" \\\n  -H "<span class="k">Content-Type</span>: application/json" \\\n  -d '{"model":"<span class="m">gpt-4o-mini</span>","messages":[{"role":"user","content":"你好"}]}'` }}></pre>
+          <pre dangerouslySetInnerHTML={{ __html: `curl <span class="k">${exampleBase}</span>/v1/chat/completions \\\n  -H "<span class="k">Authorization</span>: Bearer sk-${t(lang, "home", "curl_token")}" \\\n  -H "<span class="k">Content-Type</span>: application/json" \\\n  -d '{"model":"<span class="m">gpt-4o-mini</span>","messages":[{"role":"user","content":"你好"}]}'` }}></pre>
         </div>
       </Section>
 
       <Section title={t(lang, "docs", "s03")}>
         <div class="codeblock">
           <div class="cb-head"><i style="background:#f87171"></i><i style="background:#ffc857"></i><i style="background:#3ddc97"></i><span style="margin-left:6px">python</span></div>
-          <pre dangerouslySetInnerHTML={{ __html: `from <span class="k">openai</span> import OpenAI\nclient = OpenAI(\n    base_url="<span class="k">https://freeai-gateway.YOUR-SUBDOMAIN.workers.dev/v1</span>",\n    api_key="sk-${t(lang, "home", "curl_token")}",\n)\nresp = client.chat.completions.create(\n    model="<span class="m">gpt-4o-mini</span>",\n    messages=[{"role": "user", "content": "你好"}],\n)\nprint(resp.choices[0].message.content)` }}></pre>
+          <pre dangerouslySetInnerHTML={{ __html: `from <span class="k">openai</span> import OpenAI\nclient = OpenAI(\n    base_url="<span class="k">${exampleBase}/v1</span>",\n    api_key="sk-${t(lang, "home", "curl_token")}",\n)\nresp = client.chat.completions.create(\n    model="<span class="m">gpt-4o-mini</span>",\n    messages=[{"role": "user", "content": "你好"}],\n)\nprint(resp.choices[0].message.content)` }}></pre>
         </div>
       </Section>
 
       <Section title={t(lang, "docs", "s04")}>
         <div class="codeblock">
           <div class="cb-head"><i style="background:#f87171"></i><i style="background:#ffc857"></i><i style="background:#3ddc97"></i><span style="margin-left:6px">js</span></div>
-          <pre dangerouslySetInnerHTML={{ __html: `const resp = await fetch(\n  "<span class="k">https://freeai-gateway.YOUR-SUBDOMAIN.workers.dev/v1/chat/completions</span>",\n  {\n    method: "POST",\n    headers: {\n      Authorization: "Bearer sk-${t(lang, "home", "curl_token")}",\n      "Content-Type": "application/json",\n    },\n    body: JSON.stringify({\n      model: "<span class="m">gpt-4o-mini</span>",\n      messages: [{ role: "user", content: "你好" }],\n    }),\n  },\n);\nconst data = await resp.json();\nconsole.log(data.choices[0].message.content);` }}></pre>
+          <pre dangerouslySetInnerHTML={{ __html: `const resp = await fetch(\n  "<span class="k">${exampleBase}/v1/chat/completions</span>",\n  {\n    method: "POST",\n    headers: {\n      Authorization: "Bearer sk-${t(lang, "home", "curl_token")}",\n      "Content-Type": "application/json",\n    },\n    body: JSON.stringify({\n      model: "<span class="m">gpt-4o-mini</span>",\n      messages: [{ role: "user", content: "你好" }],\n    }),\n  },\n);\nconst data = await resp.json();\nconsole.log(data.choices[0].message.content);` }}></pre>
         </div>
       </Section>
 

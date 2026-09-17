@@ -40,10 +40,11 @@ FreeAI Gateway 是一个聚合免费 AI API 免费额度的高可用网关，可
 
 | 方法与路径 | 说明 |
 |------------|------|
-| `GET /` | 首页：接入示例 + 可用模型列表（含健康状态） |
+| `GET /` | 首页：接入示例（渠道/模型统计仅登录后可看） |
 | `GET/POST /auth` | 注册 / 登录 / 提示（PoW 无感校验） |
 | `POST /auth/logout` | 登出 |
-| `GET /dashboard` | 网关 Token 卡片 + 用量 + 贡献 |
+| `GET /dashboard` | 网关 Token 卡片 + 用量 + 资源池统计 + 贡献 |
+| `GET /health` | 登录受限的资源池统计片段（htmx 每 60s 刷新，仅 dashboard） |
 | `GET /submit` | 贡献者提交 / 管理渠道 |
 | `GET /api/tokens/*` | Token 生成 / 重置（一次性明文展示） |
 | `GET/POST /api/channels/*` | 渠道查看 / 提交 / 重校验 / 删除 / fetch-models |

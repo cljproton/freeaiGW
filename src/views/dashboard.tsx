@@ -4,6 +4,7 @@ import type { Lang } from "../i18n";
 import { t } from "../i18n";
 import { Layout, Flash } from "./layout";
 import type { Seo } from "../utils/seo";
+import { HealthPanel, type Health } from "./index";
 
 export interface UsageInfo {
   calls: number;
@@ -59,13 +60,14 @@ export function DashboardPage(props: {
   usage: UsageInfo;
   contributions: DBChannel[];
   tokenPrefix?: string | null;
+  health: Health;
   flash?: string;
   lang: Lang;
   env: Env;
   base?: string;
   seo?: Seo;
 }) {
-  const { user, usage, contributions, tokenPrefix, flash, lang, env, base, seo } = props;
+  const { user, usage, contributions, tokenPrefix, health, flash, lang, env, base, seo } = props;
   const callPct = usage.limit > 0 ? Math.min(100, Math.round((usage.calls / usage.limit) * 100)) : 0;
   const tokPct = usage.tokensLimit > 0 ? Math.min(100, Math.round((usage.tokens / usage.tokensLimit) * 100)) : 0;
   const repCls =
@@ -151,6 +153,12 @@ export function DashboardPage(props: {
         <p style="margin:14px 0 0;font-size:12.5px;color:var(--dim)">
           {t(lang, "dashboard", "bonus_note")}
         </p>
+      </section>
+
+      <section style="margin-top:22px">
+        <div id="health-panel" hx-get="/health" hx-trigger="load delay:300ms, every 60s" hx-swap="outerHTML">
+          <HealthPanel health={health} lang={lang} />
+        </div>
       </section>
 
       {contributions.length ? (

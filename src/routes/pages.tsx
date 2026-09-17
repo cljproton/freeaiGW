@@ -14,7 +14,7 @@ import { DocsPage, TermsPage } from "../views/docs";
 
 const ROUTER = new Hono<AppEnv>();
 
-/** 首页健康数据：可用模型聚合 + 渠道数 + 预算状态 */
+/** 资源池健康数据（登录后 dashboard 展示）：可用模型聚合 + 渠道数 + 预算状态 */
 async function getHealth(env: Env): Promise<Health> {
   const { results } = await env.DB
     .prepare(`SELECT models FROM channels WHERE is_active = 1 AND is_valid = 1 AND is_circuited = 0`)
@@ -50,15 +50,15 @@ async function loadDashboardData(env: Env, user: DBUser) {
     isNew: isNewUser(user.created_at, env),
     reputation: user.reputation,
   };
-  return { usage, contributions, tokenPrefix: token?.token_prefix ?? null };
+  return { usage, contributions, tokenPrefix: token?.token_prefix ?? null, health: await getHealth(env) };
 }
 
 ROUTER.get("/", async (c) => {
-  const health = await getHealth(c.env);
+  const budget = await getBudgetStatus(c.env);
   const lang = c.get("lang");
   return c.html(
     <IndexPage
-      health={health}
+      paused={budget.state === "paused"}
       lang={lang}
       env={c.env}
       base={canonicalBase(c)}
@@ -67,9 +67,10 @@ ROUTER.get("/", async (c) => {
   );
 });
 
-ROUTER.get("/health", async (c) => {
+// 资源池统计 htmx partial：仅登录后可用（供 dashboard 每 60s 刷新）
+ROUTER.get("/health", requirePageUser, async (c) => {
   const health = await getHealth(c.env);
-  return c.html(<HealthPanel health={health} lang={c.get("lang")} base={canonicalBase(c)} />);
+  return c.html(<HealthPanel health={health} lang={c.get("lang")} />);
 });
 
 ROUTER.get("/dashboard", requirePageUser, async (c) => {
@@ -87,6 +88,7 @@ ROUTER.get("/dashboard", requirePageUser, async (c) => {
       usage={data.usage}
       contributions={data.contributions}
       tokenPrefix={data.tokenPrefix}
+      health={data.health}
       flash={tokenMsg}
       lang={lang}
       env={c.env}
