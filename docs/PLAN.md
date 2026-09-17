@@ -410,6 +410,11 @@ async function proxyWithFailover(request: Request, env: Env, userId: number, mod
 }
 ```
 
+**实际实现要点**（`src/routes/proxy.ts`）：
+- 上游 `fetch` 带 **30s AbortController 超时**：上游挂死不再无限占连接（此前会被前端反代误报为裸 502）
+- 客户端收到的是**统一** `502 {"error":"upstream_failed"}` + 双语通用 message，**不透传任何上游响应文本/网络错误详情**（AGENTS 安全模型）；4xx 短路不重试，但返回值仍统一为 502 契约；详细失败记入 `channels.last_error` 与 `usage_logs`（仅内部可见）
+- **全局兜底**（`src/index.ts`）：`app.onError` 记日志并返回 `500 {"error":"internal_error"}` JSON，`notFound` 返回 `404 {"error":"not_found"}` JSON——避免未捕获异常被反代吞成非 JSON 错误页
+
 ### 5.4 Channel 健康与熔断机制
 
 #### 成功/失败记录（实时更新成功率）

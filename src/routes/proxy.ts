@@ -20,6 +20,14 @@ const ROUTER = new Hono<AppEnv>();
 
 const MAX_BODY = 10 * 1024 * 1024; // 10MB
 
+/** 上游请求超时（毫秒）：防止上游挂死占住连接，进而被前端反代误报 502 */
+const UPSTREAM_TIMEOUT_MS = 30_000;
+
+/** 统一的下游错误提示：不向客户端暴露任何上游细节（AGENTS 安全模型） */
+function upstreamMsg(lang: Lang): string {
+  return t(lang, "errors", "upstream_failed");
+}
+
 /** 上游地址归一：api_url 已含 /v1 则不重复拼接 */
 function upstreamChatUrl(apiUrl: string): string {
   const base = apiUrl.replace(/\/+$/, "");
@@ -93,15 +101,23 @@ ROUTER.post(
       }
 
       try {
-        const resp = await fetch(upstreamChatUrl(ch.api_url), {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${key}`,
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: raw,
-        });
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+        let resp: Response;
+        try {
+          resp = await fetch(upstreamChatUrl(ch.api_url), {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${key}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: raw,
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timer);
+        }
 
         const status = resp.status;
         const outBuffer = await resp.arrayBuffer();
@@ -157,16 +173,17 @@ ROUTER.post(
         // 4xx：请求本身问题，不重试
         if (status >= 400 && status < 500) {
           lastStatus = status;
-          lastErr = outText.slice(0, 200);
+          lastErr = upstreamMsg(lang);
           break;
         }
         lastStatus = status;
-        lastErr = outText.slice(0, 200);
+        lastErr = upstreamMsg(lang);
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        await recordChannelResult(c.env, ch.id, false, `网络错误: ${msg}`);
+        const isTimeout = e instanceof Error && e.name === "AbortError";
+        const msg = isTimeout ? "上游请求超时" : e instanceof Error ? e.message : String(e);
+        await recordChannelResult(c.env, ch.id, false, msg);
         await maybeCircuitBreak(c.env, ch.id);
-        lastErr = msg;
+        lastErr = upstreamMsg(lang);
         lastStatus = 502;
       }
     }

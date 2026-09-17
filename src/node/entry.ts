@@ -121,3 +121,9 @@ main().catch((e) => {
   console.error(e);
   process.exit(1);
 });
+
+// 兜底：async 未捕获异常不允许静默吞掉，至少落日志便于排障（不直接退进程，
+// 由 Docker/反代的健康与重启策略兜底）
+process.on("unhandledRejection", (reason) => {
+  console.error("[unhandledRejection]", reason);
+});
