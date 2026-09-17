@@ -7,7 +7,7 @@ export type PowChallenge = { id: string; salt: string; difficulty: number };
 
 const KV_PREFIX = "pow:";
 const POW_TTL_SECONDS = 600;
-export const POW_DIFFICULTY = 4;
+export const POW_DIFFICULTY = 5;
 const NONCE_RE = /^[0-9a-f]{1,64}$/;
 const ID_RE = /^[0-9a-f]{16}$/;
 

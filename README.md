@@ -49,6 +49,7 @@ It automatically schedules multiple upstream channels behind a single `sk-xxx` g
 | `GET /health` | Login-protected pool stats partial (htmx 60s refresh, dashboard only) |
 | `GET /submit` | Contributors submit / manage channels |
 | `GET /api/tokens/*` | Token generation / reset (one-time plaintext display) |
+| `POST /api/account/password` | Change password (verifies current password; signs out other devices) |
 | `GET/POST /api/channels/*` | Channel view / submit / re-validate / delete / fetch-models |
 | `POST /v1/chat/completions` | **Main gateway endpoint** (Bearer `sk-xxx`) |
 | `GET /v1/models` | Available model list |
@@ -143,7 +144,7 @@ typecheck gate → multi-arch (amd64/arm64) build → push to GHCR using `GITHUB
 | New user | `NEW_USER_CALLS_QUOTA` | `50` | Daily call limit for new users |
 | New user | `NEW_USER_TOKENS_QUOTA` | `150000` | Daily token limit for new users |
 | Session | `SESSION_TTL` | `604800` | Session KV TTL (seconds) |
-| Anti-abuse | `MAX_REGISTER_PER_IP_PER_DAY` | `20` | Max registrations per IP per day |
+| Session | `COOKIE_SECURE` | `0` | Add `Secure` to session cookie (1 = HTTPS-only; keep 0 for local http dev) |
 | Circuit | `CIRCUIT_*` | - | Success-rate threshold / min requests / cooldown / deactivation count |
 | Retry | `MAX_PROXY_RETRIES` | `2` | Max upstream switches per call |
 | Reputation | `REPUTATION_*` | - | Gain / penalty weights (Appendix J) |
@@ -188,7 +189,7 @@ src/
 ├── node/entry.ts       # Pure Node entry (node:http + .env + node-cron)
 ├── utils/              # crypto (PBKDF2/password/token), pow, audit, i18n, seo (canonical/JSON-LD)
 ├── middleware/         # auth / budget / quota / rate-limit / seo (language prefix + normalization)
-├── routes/             # pages / auth / tokens / channels / proxy / cron / seo (robots/sitemap/llms)
+├── routes/             # pages / auth / tokens / account / channels / proxy / cron / seo (robots/sitemap/llms)
 └── views/              # htmx + Tailwind pages (inline PoW script, bilingual)
 migrations/             # D1 SQL migrations (auto-applied in Node mode)
 scripts/publish.sh      # One-shot publish (optional --migrate)

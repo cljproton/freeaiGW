@@ -40,7 +40,7 @@ npm run publish -- --migrate      # 首次部署/改表：先 wrangler d1 migrat
 
 - 网关 Token：`sk-{64hex}` 仅创建/重置时展示一次（入口会话 flash，读后即删，TTL 120s），库中只存 SHA-256 哈希（`sha256Hex`）。
 - 上游 Channel Key：`ENCRYPTION_KEY` AES-256-GCM 加密入库（格式 `iv:cipher`），仅在 proxy 解密转发。严禁打印/记录明文 Key 或完整 Token。
-- 反滥用（`src/utils/pow.ts` + 路由）：PoW 难度 4（挑战存 KV `GATE`，一次性，TTL 600s）、蜜罐 `website` 字段、提交时序 `<2.5s 拒绝`、同 IP 每日注册 ≤20（`MAX_REGISTER_PER_IP_PER_DAY`）。
+- 反滥用（`src/utils/pow.ts` + 路由）：PoW 难度 5（挑战存 KV `GATE`，一次性，TTL 600s）、蜜罐 `website` 字段、提交时序 `<2.5s 拒绝`、每 IP 累计注册 ≤3 个账号（`ip_register_log` 永久计数，见 PLAN A.2）、登录失败 IP+账户双维度 10min/10 次锁定（锁定存 `lock@` 截止戳，页面显示剩余秒、到期自动解）、/v1 无效 Token IP 级限流（`badex`，429）。
 - 惩罚日志伪造模型名 `惩罚:...`（见 `src/routes/cron.ts:107` `model LIKE '惩罚:%'`），信誉分日增逻辑依赖它，勿改名。
 
 ## 调度与转发（`src/routes/proxy.ts` + `src/scheduler/pickChannel.ts`）
@@ -56,7 +56,7 @@ npm run publish -- --migrate      # 首次部署/改表：先 wrangler d1 migrat
 - `src/node/entry.ts`：Node 模式入口（`node:http` 透传 + `.env` + node-cron），启动即 `runDailyTasks()` 一次。
 - `src/platform/`：存储抽象——`types.ts`（PlatformDb/PlatformKv/PlatformEnv）+ `node.ts`（better-sqlite3 自动迁移 / 文件 KV / env 兜底）。
 - `src/i18n.ts`：en/zh 词典 + `t()`，`Lang` 类型；语言 cookie 名 `ln`，`GET /lang?to=zh|en` 切换；`seo` 分组存页面 description 词条。
-- `src/routes/`：`pages/auth/tokens/channels/(v1 proxy)/cron/lang/seo`；`src/views/`：hono/jsx 页面（全双语）。`src/routes/seo.ts` 返回 `robots.txt / sitemap.xml / llms.txt / llms.md`。
+- `src/routes/`：`pages/auth/tokens/account/channels/(v1 proxy)/cron/lang/seo`；`src/views/`：hono/jsx 页面（全双语）。`src/routes/seo.ts` 返回 `robots.txt / sitemap.xml / llms.txt / llms.md`。
 - `src/middleware/`：`auth`（sid 会话 + Bearer）、`budget`（KV `GATE` 采样估算）、`quota`、`rate-limit`、`seo`（语言前缀 + 公开页 301，见 PLAN 附录 L）。
 - `src/utils/seo.ts`：`canonicalBase`（`PUBLIC_BASE_URL` → 请求 Host）、JSON-LD（WebSite/SoftwareApplication）、`Seo` 类型；`Layout` 渲染 canonical/hreflang/OG/JSON-LD。
 - `migrations/`：SQL（Workers D1 与 Node 共用），新增表/索引要同时更新 `src/db/schema.ts` 的行类型与 `src/db/index.ts` 访问函数。Node 首次启动自动应用。

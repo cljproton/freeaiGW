@@ -14,14 +14,14 @@ export interface Env {
   ENCRYPTION_KEY: string;
   SESSION_TTL: string;
   CRON_TOKEN: string;
+  // 会话 Cookie 加 Secure（1=仅 HTTPS 下发；本地 http 开发保持空/0）
+  COOKIE_SECURE?: string;
   // 使用配额
   MAX_CALLS_PER_USER_DAY: string;
   MAX_TOKENS_PER_USER_DAY: string;
   NEW_USER_DAYS: string;
   NEW_USER_CALLS_QUOTA: string;
   NEW_USER_TOKENS_QUOTA: string;
-  // 反滥用
-  MAX_REGISTER_PER_IP_PER_DAY: string;
   // 熔断与调度
   CIRCUIT_SUCCESS_RATE_THRESHOLD: string;
   CIRCUIT_MIN_REQUESTS: string;

@@ -251,10 +251,12 @@ CREATE UNIQUE INDEX idx_user_tokens_one_active ON user_tokens(user_id) WHERE is_
 ### 5.1 认证与会话
 
 - **注册/登录**：纯用户名+密码（匿名），PBKDF2 低迭代（~30k-60k，控制在 10ms CPU 内）
-- **会话**：登录后生成随机 session token，存 KV（TTL 7 天），Cookie 携带
-- **自研反滥用（无第三方）**：注册/登录页前端 PoW（SHA-256 前缀零 ≥ 4）+ 蜜罐 + 提交时序（见附录 A）
-- **IP 注册限流**：同一 IP 24h 最多 3 个账号（`ip_register_log`，见附录 A）
-- **网关 Token 认证**：调用网关接口用 `Authorization: Bearer sk-xxx`，校验 SHA-256 hash（见 4.2 / 附录 F）
+- **会话**：登录后生成随机 session token，存 KV（TTL 7 天），Cookie 携带（`COOKIE_SECURE=1` 时追加 `Secure`）；会话值含 `pwv` 密码指纹，密码变更后其它端自动失效
+- **登录防暴破**：失败计数 **IP + 账户双维度**（任一 10 分钟 ≥10 次即锁定）；锁定存储为**截止时间戳**（`lock@`），登录/改密页显示**剩余等待秒数**，到期自动解锁；登录失败统一文案（`err_login_failed`）防用户名枚举；登录成功销毁残留旧会话防会话固定（见附录 A）
+- **修改密码**：登录态 `POST /api/account/password`，校验旧密码（失败计入双维度限流）+ 新密码强度 + 两次一致；成功后仅当前会话保留，其它端因 `pwv` 不匹配自动失效
+- **自研反滥用（无第三方）**：注册/登录页前端 PoW（SHA-256 前缀零 ≥ 5）+ 蜜罐 + 提交时序（见附录 A）
+- **IP 注册限流**：每个 IP **任何时候累计最多 3 个账号**（`ip_register_log` 永久计数，见附录 A）
+- **网关 Token 认证**：调用网关接口用 `Authorization: Bearer sk-xxx`，校验 SHA-256 hash（见 4.2 / 附录 F）；无效 Token 探测有 IP 级限流（`badex`，429）
 
 ### 5.2 Channel 提交与管理流程（贡献者）
 
@@ -587,7 +589,7 @@ async function validateChannelsBatch(env: Env) {
 |------|------|------|
 | 首页 | `/` | Hero + 接入示例（渠道数与可用模型移入登录后的使用面板） |
 | 注册/登录 | `/auth` | 合并一页，Tab 切换（用户名+密码 + 自研 PoW 无感校验） |
-| 使用面板 | `/dashboard` | 单 Token 卡片 + 用量 + 我的贡献 + 资源池统计（渠道数/模型） |
+| 使用面板 | `/dashboard` | 单 Token 卡片 + 用量 + 我的贡献 + 资源池统计（渠道数/模型）+ 账号安全 |
 | 提交 Channel | `/submit` | 即时校验 + 模型拉取/手动输入 + 授权声明 |
 | 使用帮助 | `/docs` | curl + Python/JS SDK 示例 |
 | 协议 | `/terms` | 用户协议 + 免责声明 |
@@ -618,12 +620,13 @@ freeaiapikey/
     ├── config.ts                    # 常量配置（限额、熔断阈值等）
     ├── middleware/
     │   ├── auth.ts                  # Token 验证中间件
-    │   ├── rate-limit.ts            # 登录失败限流
+    │   ├── rate-limit.ts            # 登录失败限流（IP+账户）/ /v1 无效 Token 限流
     │   ├── quota.ts                 # 用户配额检查（条件更新原子扣减）
     │   └── budget.ts                # 免费计划预算保护（KV GATE 采样估算 + 暂停）
     ├── routes/
-    │   ├── auth.ts                  # 注册 / 登录 / 登出（+ PoW/蜜罐/时序 / IP 限流）
+    │   ├── auth.ts                  # 注册 / 登录 / 登出（+ PoW/蜜罐/时序 / IP+账户限流）
     │   ├── tokens.ts                # 网关 Token（唯一 Token 生成/重置）
+    │   ├── account.ts               # 修改密码（+ 其它会话失效 / 双维度限流联动）
     │   ├── channels.ts              # Channel 提交/查看/重校验/删除 + fetch-models
     │   ├── proxy.ts                 # POST /v1/chat/completions 转发+故障转移
     │   ├── quota.ts                 # 用量查询
@@ -679,6 +682,8 @@ ENCRYPTION_KEY = "<32字符随机密钥>"
 MAX_CALLS_PER_USER_DAY = "100"
 MAX_TOKENS_PER_USER_DAY = "300000"
 SESSION_TTL = "604800"
+# 会话 Cookie 加 Secure（生产 HTTPS 建议 "1"，本地 http 开发保持 "0"）
+COOKIE_SECURE = "0"
 # 熔断参数
 CIRCUIT_SUCCESS_RATE_THRESHOLD = "0.5"
 CIRCUIT_MIN_REQUESTS = "10"
@@ -730,6 +735,8 @@ BUDGET_SAMPLE_RATE = "1/200"
 4. **滥用风险**：尽管有配额+熔断+审计，仍需关注异常流量
 5. **D1 写入并发**：高并发下配额更新可能有竞争（用原子 UPDATE 缓解）
 6. **单点故障**：单 Worker，CF 边缘网络天然高可用，但代码部署错误会全站挂
+7. **登录爆破 / Token 盗窃**：已实施 IP+账户双维度失败限流（锁定显示剩余等待秒数，到期自动恢复）、登录统一文案（防用户名枚举）、会话 pwv 指纹（改密踢其它端）、/v1 无效 Token IP 级限流、每 IP 累计注册 ≤3、PoW 难度 5；登录态 Token 展示在 flash 一次性读取（TTL 120s）
+8. **批量注册套额度**：每 IP 固定累计 ≤3 个账号（`ip_register_log` 永久计数），配合 PoW 5 大幅抬高批量成本
 
 ---
 
@@ -742,28 +749,30 @@ BUDGET_SAMPLE_RATE = "1/200"
 ### A.1 自研 Proof-of-Work（无第三方依赖）
 
 不依赖任何外部服务（如 Turnstile），全自研前端工作量证明 + 蜜罐 + 时序三重校验。
-注册/登录表单提交在**前端无感完成**约 6.5 万次 SHA-256 计算（现代设备不足 0.5s），
+注册/登录表单提交在**前端无感完成**约 100 万次 SHA-256 计算（难度 5，主流设备 1-3s），
 页面加载零阻塞，符合免费计划成本。
 
 **服务端下发挑战**（GET `/auth` 与每次错误回显时，`powIssue`）：
 - 生成随机 `pow_id`（16 hex）与随机盐 `pow_salt`（16 hex）
-- 以 KV（`GATE` namespace，键前缀 `pow:`）保存挑战，TTL 10 分钟，`difficulty = 4`
+- 以 KV（`GATE` namespace，键前缀 `pow:`）保存挑战，TTL 10 分钟，`difficulty = 5`
 
 **前端计算与提交**（页面内联 WebCrypto 脚本，`views/auth.tsx`）：
 - 表单含隐藏字段 `pow_id` / `pow_salt` / `pow_d` / `pow_n` / `got_ts`，及隐藏蜜罐 `website`
-- 提交时循环递增 nonce，计算 `SHA-256(salt:nonce_hex)`，直到结果十六进制串前缀零个数 ≥ `pow_d`（4）
-- 命中后写入 `pow_n` 再原生提交表单；计算期间按钮禁用并提示「安全校验中…」
+- 提交时循环递增 nonce，计算 `SHA-256(salt:nonce_hex)`，直到结果十六进制串前缀零个数 ≥ `pow_d`（5）
+- 命中后写入 `pow_n` 再原生提交表单；计算期间按钮禁用并提示「安全校验中…」；循环上限 1600 万（慢设备余量）
 
 **服务端验证**（`utils/pow.ts` `powVerify`，校验链见 5.1）：
 1. `pow_id` / `pow_salt` / `pow_n` 格式校验
 2. KV 读取挑战并**立即删除（一次性，防重放）**
-3. 校验 `pow_d` 一致且 `SHA-256(salt:nonce_hex)` 前缀零 ≥ 4
+3. 校验 `pow_d` 一致且 `SHA-256(salt:nonce_hex)` 前缀零 ≥ 5
 
 **蜜罐与时序**（`botcheckError`）：
 - `website` 字段被填充（肉眼不可见，aria-hidden / 移出可视区）→ 直接判定可疑提交
 - `got_ts` 距提交不足 2.5s（人类不可能完成 PoW）或超过 10 分钟 → 判定校验失败
 
-### A.2 IP 注册限流（D1）
+### A.2 IP 注册限流（D1，固定累计）
+
+每个 IP **任何时候累计最多注册 3 个账号**（无时间窗口），记录在 `ip_register_log` 永久计数。
 
 ```sql
 CREATE TABLE ip_register_log (
@@ -775,17 +784,18 @@ CREATE INDEX idx_ip_register ON ip_register_log(ip, created_at);
 
 ```typescript
 async function checkIpRegisterLimit(ip: string, env: Env): Promise<boolean> {
-  const dayAgo = new Date(Date.now() - 24*3600*1000).toISOString();
-  const { results } = await env.DB.prepare(`
-    SELECT COUNT(*) as cnt FROM ip_register_log WHERE ip = ? AND created_at > ?
-  `).bind(ip, dayAgo).first();
-  return (results.cnt ?? 0) < 20; // 24h 内最多 20 个账号（阈值经 K.4 由 3 上调）
+  const row = await env.DB.prepare(`
+    SELECT COUNT(*) as cnt FROM ip_register_log WHERE ip = ?
+  `).bind(ip).first();
+  return (row.cnt ?? 0) < 3; // 固定累计上限 3，达到后永久拒绝新注册
 }
 
 async function logIpRegister(ip: string, env: Env) {
   await env.DB.prepare(`INSERT INTO ip_register_log (ip) VALUES (?)`).bind(ip).run();
 }
 ```
+
+> 说明：由 K.4 的「每日 20」窗口（历史由 3 上调）**恢复为固定累计 3**（K.4.1 覆盖）。达到上限的 IP 不再接受新注册。
 
 ### A.3 新用户配额减半（正常用户放宽）
 
@@ -813,7 +823,7 @@ async function checkQuota(userId: number, env: Env) {
 
 ```toml
 [vars]
-MAX_REGISTER_PER_IP_PER_DAY = "20"
+COOKIE_SECURE = "0"                 # 会话 Cookie 加 Secure（生产 HTTPS 建议 "1"）
 NEW_USER_DAYS = "7"
 NEW_USER_CALLS_QUOTA = "50"
 NEW_USER_TOKENS_QUOTA = "150000"
@@ -953,7 +963,7 @@ circuit_count INTEGER DEFAULT 0,  -- 熔断印记，触发熔断 +1，>=5 自动
 |------|------|--------|------|
 | 首页 | `/` | 公开 | Hero + 接入示例（无聚合统计，隐私优先） |
 | 注册/登录 | `/auth` | 公开 | 合并一页，Tab 切换 |
-| 使用面板 | `/dashboard` | 登录 | Token 管理 + 用量 + 资源池统计 + 我的贡献 |
+| 使用面板 | `/dashboard` | 登录 | Token 管理 + 用量 + 资源池统计 + 我的贡献 + 账号安全 |
 | 提交 Channel | `/submit` | 登录 | 单表单 + 授权声明 |
 | 使用帮助 | `/docs` | 公开 | curl + Python/JS SDK 示例 |
 | 协议 | `/terms` | 公开 | 用户协议 + 免责声明 |
@@ -967,6 +977,7 @@ circuit_count INTEGER DEFAULT 0,  -- 熔断印记，触发熔断 +1，>=5 自动
 # 基础
 ENCRYPTION_KEY = "<32字符随机密钥>"
 SESSION_TTL = "604800"
+COOKIE_SECURE = "0"                # 会话 Cookie 加 Secure（生产 HTTPS 建议 "1"）
 
 # 使用配额（正常用户放宽）
 MAX_CALLS_PER_USER_DAY = "100"
@@ -974,9 +985,6 @@ MAX_TOKENS_PER_USER_DAY = "300000"
 NEW_USER_DAYS = "7"
 NEW_USER_CALLS_QUOTA = "50"
 NEW_USER_TOKENS_QUOTA = "150000"
-
-# 反滥用
-MAX_REGISTER_PER_IP_PER_DAY = "20"
 
 # 熔断与调度
 CIRCUIT_SUCCESS_RATE_THRESHOLD = "0.5"
@@ -1096,6 +1104,7 @@ cr_cache_date TEXT;                    -- 缓存日期（YYYY-MM-DD）
 | **立即失效** | 重置后旧 token_hash 立即失效，使用旧 Token 的请求立即 401 |
 | **仅展示一次** | 新 Token 明文只在生成时返回一次 |
 | **需登录会话** | 重置是敏感操作，必须在登录态进行（防止他人重置） |
+| **防探测** | `/v1` 无效 Token 触发 IP 级限流（`badex:*`，10 分钟 ≥10 次 → 429 限流，防扫描与 DoS） |
 
 ### F.2 生命周期
 
@@ -1393,6 +1402,9 @@ BUDGET_SAMPLE_RATE = "1/200"
 - **构建与运行**：源码为 ESM 且无扩展名导入，纯 Node 无法直接跑 → 用 esbuild 打包
   `dist-node/index.cjs`（`--packages=external`，external：better-sqlite3 / node-cron）。脚本见 AGENTS.md：
   `dev:node`（tsx）/ `build:node`（esbuild）/ `start:node`。
+  本地一键启停用 `bash scripts/service.sh {start|stop|restart|status|logs}`：start 先 `build:node` 再后台启动
+  单进程（`setsid` 脱离会话，防与启动命令同生共死），PID/日志分别落 `data/service.pid`（gitignore）与
+  `data/service.log`；stop 按 PID 精确认杀（约 10s 后仍存活则 `kill -9`），**不使用 `pkill -f`**；端口读 `.env` 的 `PORT`。
 - **回归验证**：每次源码改动跑 `npm run typecheck` + `npm run build:node` + 重新 `node dist-node/index.cjs`
   冒烟（注册→欢迎页见明文 Token→二次访问 flash 已消费→空池 `502 upstream_failed`）。
   Worker 侧 `npm run build`（wrangler dry-run）不受 Node 文件影响（main 仍是 `src/index.ts`）。
@@ -1402,6 +1414,13 @@ BUDGET_SAMPLE_RATE = "1/200"
 
 - `MAX_REGISTER_PER_IP_PER_DAY` 阈值 **3 → 20**（wrangler.toml/example、`src/platform/node.ts` 默认值、
   `src/routes/auth.tsx` fallback 同步）。附录 A.2 的同 IP 每日上限描述以其为准。
+- **K.4.1（认证与批量注册加固，本设计覆盖上条）**：
+  - 废弃 `MAX_REGISTER_PER_IP_PER_DAY` 时间窗口与配置项，改为 `ip_register_log` **累计计数（每 IP 固定 ≤3）**。
+  - 登录失败限流升级为 **IP + 账户双维度**（`rate-limit.ts`：`loginfail:ip:*` / `loginfail:user:*`，10min/10 次任一命中即锁）；锁定态存 `lock@<截止时间戳>`（Workers KV 无读 TTL API，由时间戳算余量），登录/改密页显示**剩余等待秒数**，到期自动解锁；登录失败统一文案防用户名枚举，登录销毁残留会话。
+  - 新增 `/api/account/password` 修改密码（校验旧密码，失败计入双维度限流；会话 `pwv` 指纹使其它端失效）。
+  - PoW 难度 **4 → 5**（前端循环上限 1600 万）。
+  - `/v1` 无效 Token 新增 IP 级限流（`badex:*`，10min/10 次 → 429）。
+  - 新增 `COOKIE_SECURE`（会话 Cookie 加 Secure）。
 
 
 ### K.5 容器化（Docker / Docker Compose）

@@ -100,7 +100,7 @@ window.__powReady = true;
   var btn = form.querySelector('button[type=submit]');
   var nInput = form.querySelector('#pow_n');
   var salt = form.querySelector('#pow_salt').value;
-  var d = parseInt(form.querySelector('#pow_d').value, 10) || 4;
+  var d = parseInt(form.querySelector('#pow_d').value, 10) || 5;
   var enc = new TextEncoder();
   if (!window.crypto || !window.crypto.subtle) return;
   function leadingZeros(hex) {
@@ -117,7 +117,7 @@ window.__powReady = true;
     btn.disabled = true;
     btn.textContent = S.busy;
     try {
-      for (var n = 1; n <= 1000000; n++) {
+      for (var n = 1; n <= 16000000; n++) {
         var buf = await crypto.subtle.digest('SHA-256', enc.encode(salt + ':' + n.toString(16)));
         var arr = new Uint8Array(buf);
         var h = '';

@@ -47,6 +47,7 @@ FreeAI Gateway 是一个聚合免费 AI API 免费额度的高可用网关，可
 | `GET /health` | 登录受限的资源池统计片段（htmx 每 60s 刷新，仅 dashboard） |
 | `GET /submit` | 贡献者提交 / 管理渠道 |
 | `GET /api/tokens/*` | Token 生成 / 重置（一次性明文展示） |
+| `POST /api/account/password` | 修改密码（校验当前密码，其他设备会话自动失效） |
 | `GET/POST /api/channels/*` | 渠道查看 / 提交 / 重校验 / 删除 / fetch-models |
 | `POST /v1/chat/completions` | **核心网关接口**（Bearer `sk-xxx`） |
 | `GET /v1/models` | 可用模型列表 |
@@ -141,7 +142,7 @@ typecheck 门禁 → 多架构构建 → 推送 GHCR（`GITHUB_TOKEN`，无需�
 | 新用户 | `NEW_USER_CALLS_QUOTA` | `50` | 新用户每日调用上限 |
 | 新用户 | `NEW_USER_TOKENS_QUOTA` | `150000` | 新用户每日 token 上限 |
 | 会话 | `SESSION_TTL` | `604800` | 会话 KV TTL（秒） |
-| 反滥用 | `MAX_REGISTER_PER_IP_PER_DAY` | `20` | 同 IP 每日注册账号上限 |
+| 会话 | `COOKIE_SECURE` | `0` | 会话 Cookie 加 Secure（1=仅 HTTPS；本地 http 开发保持 0） |
 | 熔断 | `CIRCUIT_*` | - | 成功率阈值 / 最少请求数 / 冷却时长 / 下架次数 |
 | 重试 | `MAX_PROXY_RETRIES` | `2` | 单次调用最多切换上游次数 |
 | 信誉分 | `REPUTATION_*` | - | 加分 / 各类扣分权重（见附录 J） |
@@ -187,7 +188,7 @@ src/
 ├── node/entry.ts       # 纯 Node 入口（node:http + .env + node-cron）
 ├── utils/              # crypto（PBKDF2/密码/token）、pow、audit、i18n、seo（canonical/JSON-LD）
 ├── middleware/         # auth / budget / quota / rate-limit / seo（语言前缀 + 规范化）
-├── routes/             # pages / auth / tokens / channels / proxy / cron / seo（robots/sitemap/llms）
+├── routes/             # pages / auth / tokens / account / channels / proxy / cron / seo（robots/sitemap/llms）
 └── views/              # htmx + Tailwind 页面（含内联 PoW 脚本，中英双语）
 migrations/             # D1 SQL 迁移（Node 模式自动应用）
 scripts/publish.sh      # 一键发布（可选 --migrate）

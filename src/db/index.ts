@@ -12,6 +12,11 @@ export async function getUserById(env: Env, id: number): Promise<DBUser | null> 
   return env.DB.prepare(`SELECT * FROM users WHERE id = ?`).bind(id).first<DBUser>();
 }
 
+/** 修改密码：仅更新 password_hash */
+export async function updatePassword(env: Env, userId: number, passwordHash: string): Promise<void> {
+  await env.DB.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).bind(passwordHash, userId).run();
+}
+
 export async function createUser(
   env: Env,
   username: string,
@@ -345,13 +350,12 @@ export async function countCr(env: Env, userId: number, withinDays = 7): Promise
   return row?.n ?? 0;
 }
 
-/** ===== IP 注册日志（A.2） ===== */
+/** ===== IP 注册日志（A.2，累计计数：每个 IP 任何时候最多 3 个账号） ===== */
 
-export async function countIpRegsToday(env: Env, ip: string): Promise<number> {
-  const today = todayStr();
+export async function countIpRegsTotal(env: Env, ip: string): Promise<number> {
   const row = await env.DB
-    .prepare(`SELECT COUNT(*) AS n FROM ip_register_log WHERE ip = ? AND created_at >= ?`)
-    .bind(ip, `${today} 00:00:00`)
+    .prepare(`SELECT COUNT(*) AS n FROM ip_register_log WHERE ip = ?`)
+    .bind(ip)
     .first<{ n: number }>();
   return row?.n ?? 0;
 }

@@ -8,8 +8,8 @@ import {
   setFlash,
   setSessionCookie,
 } from "../middleware/auth";
-import { clientIp, loginBlocked, loginFailIncrease, loginFailReset } from "../middleware/rate-limit";
-import { countIpRegsToday, createUser, getUserByUsername, insertIpLog, issueToken } from "../db";
+import { clientIp, loginBlocked, loginBlockedForUser, loginFailIncrease, loginFailIncreaseUser, loginFailReset, loginFailResetUser, loginLockRemainingMs, loginLockRemainingMsUser } from "../middleware/rate-limit";
+import { countIpRegsTotal, createUser, getUserByUsername, insertIpLog, issueToken } from "../db";
 import { generateGatewayToken, pbkdf2Hash, pbkdf2Verify, sha256Hex } from "../utils/crypto";
 import { powIssue, powVerify } from "../utils/pow";
 import { validatePassword, validateUsername } from "../validators";
@@ -20,6 +20,8 @@ import { AuthPage } from "../views/auth";
 const ROUTER = new Hono<AppEnv>();
 
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
+/** 每个 IP 任何时候最多累计注册账号数（A.2 固定限制，非时间窗口） */
+const MAX_REGISTERS_PER_IP = 3;
 
 /** 反滥用（无第三方）：蜜罐 + 提交时序。返回错误文案（已本地化）；通过返回 null */
 const MIN_ELAPSED_MS = 2500;
@@ -84,9 +86,9 @@ ROUTER.post("/register", async (c) => {
     return c.html(<AuthPage pow={pow} gotTs={gotTs} mode="register" error={t(lang, "errors", key)} lang={lang} env={c.env} />);
   }
 
-  const ipCount = await countIpRegsToday(c.env, ip);
-  if (ipCount >= (Number(c.env.MAX_REGISTER_PER_IP_PER_DAY) || 20)) {
-    return c.html(<AuthPage pow={pow} gotTs={gotTs} mode="register" error={t(lang, "auth", "err_ip_limit")} lang={lang} env={c.env} />);
+  const ipCount = await countIpRegsTotal(c.env, ip);
+  if (ipCount >= MAX_REGISTERS_PER_IP) {
+    return c.html(<AuthPage pow={pow} gotTs={gotTs} mode="register" error={t(lang, "auth", "err_reg_limit")} lang={lang} env={c.env} />);
   }
 
   const botErr = botcheckError(lang, body as Record<string, unknown>, Date.now());
@@ -129,8 +131,15 @@ ROUTER.post("/login", async (c) => {
   const pow = await powIssue(c.env);
   const gotTs = Date.now();
 
-  if (await loginBlocked(c.env, ip)) {
-    return c.html(<AuthPage pow={pow} gotTs={gotTs} mode="login" error={t(lang, "auth", "err_login_blocked")} lang={lang} env={c.env} />);
+  if ((await loginBlocked(c.env, ip)) || (await loginBlockedForUser(c.env, username))) {
+    const remSec = Math.ceil(
+      Math.max(await loginLockRemainingMs(c.env, ip), await loginLockRemainingMsUser(c.env, username)) / 1000,
+    );
+    const message =
+      remSec > 0
+        ? t(lang, "auth", "err_login_locked").replace("{s}", String(remSec))
+        : t(lang, "auth", "err_login_failed");
+    return c.html(<AuthPage pow={pow} gotTs={gotTs} mode="login" error={message} lang={lang} env={c.env} />);
   }
 
   const botErr = botcheckError(lang, body as Record<string, unknown>, Date.now());
@@ -141,10 +150,15 @@ ROUTER.post("/login", async (c) => {
   const user = await getUserByUsername(c.env, username);
   if (!user || !(await pbkdf2Verify(password, user.password_hash))) {
     await loginFailIncrease(c.env, ip);
-    return c.html(<AuthPage pow={pow} gotTs={gotTs} mode="login" error={t(lang, "auth", "err_bad_credentials")} lang={lang} env={c.env} />);
+    await loginFailIncreaseUser(c.env, username);
+    return c.html(<AuthPage pow={pow} gotTs={gotTs} mode="login" error={t(lang, "auth", "err_login_failed")} lang={lang} env={c.env} />);
   }
 
   await loginFailReset(c.env, ip);
+  await loginFailResetUser(c.env, username);
+  // 销毁当前请求残留旧会话，防会话固定
+  const oldSid = getSessionSid(c);
+  if (oldSid) await destroySession(c.env, oldSid);
   const sid = await createSession(c.env, user.id);
   setSessionCookie(c, sid);
   return c.redirect("/dashboard");

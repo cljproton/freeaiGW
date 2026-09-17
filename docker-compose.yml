@@ -6,6 +6,6 @@ services:
     env_file:
       - .env
     ports:
-      - "${PORT:-8791}:8791"
+      - "127.0.0.1:${PORT:-8791}:8791"
     volumes:
       - ${DATA_DIR:-./data}:/app/data

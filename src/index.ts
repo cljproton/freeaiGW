@@ -8,6 +8,7 @@ import pages from "./routes/pages";
 import seoRoutes from "./routes/seo";
 import auth from "./routes/auth";
 import tokens from "./routes/tokens";
+import account from "./routes/account";
 import channels from "./routes/channels";
 import proxy from "./routes/proxy";
 import cron, { runDailyTasks } from "./routes/cron";
@@ -35,6 +36,7 @@ export function createApp(env: Env): Hono<AppEnv> {
   app.route("/zh", pages);
   app.route("/auth", auth);
   app.route("/api/tokens", tokens);
+  app.route("/api/account", account);
   app.route("/api/channels", channels);
   app.route("/v1", proxy);
   app.route("/cron", cron);

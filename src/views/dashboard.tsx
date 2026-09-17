@@ -212,6 +212,42 @@ export function DashboardPage(props: {
           <a href="/submit"><b>{t(lang, "dashboard", "contributions_cta")}</b></a>
         </section>
       )}
+
+      <section class="card pad" style="margin-top:22px">
+        <div class="panel-head">
+          <h2 class="panel-title">{t(lang, "dashboard", "pw_title")}</h2>
+          <span class="panel-sub">{t(lang, "dashboard", "pw_sub")}</span>
+        </div>
+        <div id="pw-result" style="margin-top:16px"></div>
+        <form
+          hx-post="/api/account/password"
+          hx-target="#pw-result"
+          hx-swap="innerHTML"
+          style="display:grid;gap:14px;max-width:420px;margin-top:16px"
+        >
+          <div class="field">
+            <label>{t(lang, "dashboard", "pw_current")}</label>
+            <input class="input" type="password" name="current_password" required minLength={8}
+              autocomplete="current-password" placeholder="••••••••" />
+          </div>
+          <div class="field">
+            <label>{t(lang, "dashboard", "pw_new")}</label>
+            <input class="input" type="password" name="new_password" required minLength={8}
+              autocomplete="new-password" placeholder="••••••••" />
+          </div>
+          <div class="field">
+            <label>{t(lang, "dashboard", "pw_confirm")}</label>
+            <input class="input" type="password" name="new_password2" required minLength={8}
+              autocomplete="new-password" placeholder="••••••••" />
+          </div>
+          <div>
+            <button type="submit" class="btn btn-primary">{t(lang, "dashboard", "pw_btn")}</button>
+          </div>
+        </form>
+        <p style="margin:14px 0 0;font-size:12.5px;color:var(--dim)">
+          {t(lang, "dashboard", "pw_note")}
+        </p>
+      </section>
     </Layout>
   );
 }
